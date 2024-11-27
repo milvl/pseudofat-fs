@@ -1,11 +1,23 @@
+<!-- <div style="page-break-after: always;"></div> new page -->
+
 # Opakování na KIV/ZOS zápočet
 
 ## Otázky teorie
 
 - Co je to přerušení?
-  - Přerušení (anglicky "interrupt") je signál pro procesor, který informuje, že došlo k **události vyžadující okamžitou pozornost**. Přerušením procesor pozastaví aktuálně prováděný program a **přejde k obsluze této události**, často spuštěním kódu tzv. obslužné rutiny přerušení (**ISR - Interrupt Service Routine**). Po dokončení obsluhy přerušení se procesor vrátí k původní činnosti
+  - Přerušení (**Interrupt**) je signál pro procesor, který informuje, že došlo k **události vyžadující okamžitou pozornost**. Přerušením procesor pozastaví aktuálně prováděný program a **přejde k obsluze této události**, často spuštěním kódu tzv. obslužné rutiny přerušení (**ISR - Interrupt Service Routine**). Po dokončení obsluhy přerušení se procesor vrátí k původní činnosti
     - Hardwarové přerušení: Například když uživatel stiskne klávesu, myš pošle signál při pohybu, nebo se ukončí požadavek na čtení/zápis na disk.
     - Softwarové přerušení: Vytvořené příkazem v softwaru (např. INT instrukce v assembleru). Používá se pro vyvolání systémových volání.
+
+- Co je to systémové volání (**System Call**)?
+  - Mechanismus, kterým aplikace (uživatelský kód) žádá operační systém o provedení určité služby nebo operace na úrovni jádra (čtení/zápis do souboru, alokace paměti, vytvoření procesu, ...). Lze ho realizovat pomocí softwarových přerušení (na Linuxu INT 0x80 instrukce) a voláním systémových nebo knihovních funkcí.
+  - Příklady volání:
+    - `open()`, `read()`, `write()`, `close()`
+    - `fork()`, `exec()`, `exit()`
+    - `malloc()`, `free()` - funkce knihovny glibc, interně volají `brk()` nebo `mmap()`
+    - `socket()`, `bind()`, `listen()`, `accept()`
+    - `kill()`, `signal()`, `wait()`
+    - `syscall()`, `ioctl()`, `mmap()`
 
 - Jaké jsou různé typy přerušení a čím se od sebe liší?
   - Externí přerušení: Přichází z **vnějších zařízení**, např. klávesnice, myš nebo síťová karta.
@@ -28,6 +40,10 @@
   5. Obsluha přerušení: ISR zpracuje přerušení a provede potřebné kroky.
   6. Obnovení kontextu: Po dokončení ISR se původní stav obnoví, přejde se zpět do uživatelského režimu a procesor pokračuje v původním programu.
 
+- CS:IP vs vrchol zásobníku:
+  - CS:IP (obecně **Program Counter**) určuje, kde v paměti se nachází aktuální instrukce ke zpracování.
+  - SS:SP/ESP/RSP (obecně **Stack Pointer**) určuje, kde v paměti leží vrchol zásobníku, tedy místo, kde jsou uložena poslední data.
+
 - Rozdíl mezi asynchronními a synchronními událostmi
   - Asynchronní události: Jsou **neplánované** a mohou se vyskytnout **kdykoli** během programu, např. přerušení od hardwarového zařízení.
   - Synchronní události: Vyskytují se jako **přímý výsledek vykonávání programu**, např. výjimka vyvolaná dělením nulou.
@@ -35,11 +51,9 @@
 - Rozdíly a použití INT, IRQ a dalších?
   - INT: **Softwarové přerušení**, které se používá k vyvolání obslužného kódu přerušení pomocí instrukce INT v assembleru. Například INT 0x80 je běžná instrukce v Linuxu pro volání systémových funkcí.
   - IRQ (Interrupt Request Line): Jedná se o **fyzické linky nebo signály používané hardwarovými zařízeními** k žádosti o pozornost procesoru. Každé zařízení má přiřazenu vlastní linku IRQ, např. klávesnice může mít IRQ 1, myš IRQ 12.
-  
-<div style="page-break-after: always;"></div>
 
 - K čemu slouží a co obsahuje tabulka vektorů přerušení?
-  - Tabulka vektorů přerušení (Interrupt Vector Table, IVT) je struktura (mapa) **obsahující adresy příslušných obslužných rutin** pro určité přerušení.
+  - Tabulka vektorů přerušení (**Interrupt Vector Table**, IVT) je struktura (mapa) **obsahující adresy příslušných obslužných rutin** pro určité přerušení.
   - Procesor přistupuje k tabulce vektorů přerušení na základě čísla přerušení (vektor přerušení - INT ...), které získá při každém přerušení.
     - Vektory 0–31 jsou rezervovány pro výjimky a systémové chyby (např. dělení nulou).
     - Vyšší vektory (např. 32 a výše) se používají pro hardwarová a softwarová přerušení.
@@ -47,8 +61,6 @@
 - Umístění tabulky vektorů přerušení v systému
   - Na procesorech x86 bývá tabulka často umístěna na adrese **0x0000:0000** v uživatelském (user) režimu.
   - V chráněném (privileged) režimu si může systém definovat umístění tabulky podle potřeby a **adresu tabulky uloží v registru IDTR** (Interrupt Descriptor Table Register).
-
-<div style="page-break-after: always;"></div>
 
 - Co se děje při dělení nulou, neplatné instrukci, výpadku stránky paměti?
   - Dělení nulou:
@@ -59,7 +71,7 @@
   - Neplatná instrukce:
     - Neplatná instrukce nastane, když procesor narazí na neplatný nebo architekturou nepodporovaný kód instrukce.
       - Spouštění instrukcí z neinicializované/zkorumpované paměti.
-      - Úmyslný pokus o spuštění nepodporovaných nebo potenciálně škodlivých instrukcí.
+      - Pokus o spuštění nepodporovaných nebo potenciálně škodlivých instrukcí.
       - Bug nebo chyba v kompilátoru.
     - Obsluha principielně stejná jako u dělení nulou.
   
@@ -76,8 +88,6 @@
     - Nastavení tabulky stránek (tabulka překladu virtuálních adres na fyzické adresy).
     - Nastavení systémového časovače.
 
-<div style="page-break-after: always;"></div>
-
 - Čím se liší monolitický OS  a OS založený na mikrojádře (včetně struktury, spravování prostředků, atd.)?
   - Monolitický OS je postavený tak, že všechny základní služby a moduly **běží v jednom velkém jádře** (kernel), které má plný přístup k hardwaru a systémovým prostředkům. Tento typ OS obsahuje jádro, které zahrnuje různé služby, jako jsou správa paměti, správa souborového systému, správa procesů a zařízení, přímo v jádře.
   - Struktura:
@@ -91,12 +101,12 @@
     - Efektivní komunikace: Všechny moduly jsou přímo propojené, což umožňuje rychlou komunikaci a spolupráci.
   - Nevýhody:
     - Stabilita: Pokud se v jedné části jádra objeví chyba (například v ovladači zařízení), může spadnout celý systém.
-    - Bezpečnost: Protože všechny moduly sdílí jeden adresní prostor, chyba nebo zranitelnost v jednom modulu může ohrozit celé jádro.
+    - Bezpečnost: Protože všechny moduly sdílí jeden adresní prostor, chyba nebo zranitelnost v jednom modulu může ohrozit celé jádro.<br><br><br><br><br><br>
 
   - OS založený na mikrojádře má **jádro velmi malé a základní**, které obsahuje pouze ty **nejzákladnější funkce**, jako je správa procesů, základní komunikace mezi procesy (IPC - Inter-Process Communication) a základní správu paměti. Většina ostatních služeb (např. správa souborového systému, ovladače zařízení) běží mimo jádro v uživatelském prostoru.
   - Struktura:
     - Malé jádro (mikrojádro): Mikrojádro obsahuje pouze nezbytné funkce, jako je přepínání procesů, základní správa paměti a IPC.
-    - Modulární struktura: Další služby jako ovladače, správa souborů nebo síťové protokoly běží jako samostatné procesy v uživatelském režimu.<br><br><br><br>
+    - Modulární struktura: Další služby jako ovladače, správa souborů nebo síťové protokoly běží jako samostatné procesy v uživatelském režimu.
   - Správa prostředků:
     - Modulární přístup: Každá služba, jako jsou ovladače zařízení nebo souborový systém, běží jako samostatný proces v uživatelském režimu. S jádrem komunikuje přes mechanismus IPC.
     - Zabezpečená komunikace: Komunikace mezi jádrem a ostatními službami probíhá přes zprávy. Každý modul má vlastní adresový prostor, což omezuje dopad chyb a zvyšuje bezpečnost.
@@ -108,10 +118,28 @@
     - Výkon: Mikrojádra bývají pomalejší, protože dochází k přepínání mezi kontexty při komunikaci mezi moduly v uživatelském a jádrovém režimu.
     - Složitost komunikace: Protože většina systémových funkcí probíhá mimo jádro, systém je závislý na efektivní IPC, což může být obtížné a časově náročné.
 
+<div style="page-break-after: always;"></div>
+
+- IPC:
+  - IPC (**Inter-Process Communication**), tedy meziprocesová komunikace, označuje mechanismy, které umožňují procesům v operačním systému vzájemně komunikovat a sdílet data. Procesy mohou běžet na stejném systému nebo v různých prostředích (například ve více vláknech či kontejnerech)
+  - Mechanismy:
+    - Sdílená paměť (**Shared Memory**)
+    - Fronty zpráv (**Message Queues**)
+      - Posílání zpráv mezi procesy
+    - Signály (**Signals**)
+    - Pojmenované a nepojmenované roury (**Pipes**)
+      - Po streamech
+      - Nepojmenované jenom mezi rodičem a potomkem
+    - Sokety (**Sockets**)
+      - Síťová komunikace
+    - Paměťové mapování souborů (**Memory-Mapped Files**)
+      - Sdílení velkých souborů mezi procesy
+    - Sychronizační primitiva (semafory, zámky, ...)
+
 - Co je to kritická sekce, souběh?
   - Kritická sekce je část kódu, která přistupuje k **sdíleným prostředkům** (například proměnným, paměti nebo souborům), ke kterým může mít současně přístup více vláken nebo procesů. Vzhledem k tomu, že více procesů může běžet současně, může dojít k kolizím a nekonzistentním výsledkům, pokud by dva nebo více procesů přistupovaly ke sdíleným prostředkům ve stejnou dobu.
-    - Je potřeba zajistit synchronizaci přístupu k těmto prostřdkům (např. pomocí zámků, semaforů nebo podmíněných proměnných), aby se zabránilo chybám a nekonzistencím dat.
-  - Souběh nastává, když více procesů nebo vláken **běží zdánlivě současně** a přistupuje ke **sdíleným zdrojům**.
+    - Je potřeba zajistit synchronizaci přístupu k těmto prostředkům (např. pomocí zámků, semaforů nebo podmíněných proměnných), aby se zabránilo chybám a nekonzistencím dat.
+  - Souběh nastává, když více procesů nebo vláken **běží zdánlivě současně** a přistupují ke **sdíleným zdrojům**.
     - Umožňuje systému efektivněji využívat prostředky a zpracovávat více úloh současně, což je užitečné v prostředích s více jádry nebo v distribuovaných systémech.
 
 <div style="page-break-after: always;"></div>
@@ -144,14 +172,59 @@
 
 <div style="page-break-after: always;"></div>
 
+- Co se dodržuje u realtimových systémů?
+  - Realtimové systémy jsou navrženy tak, aby **dodržovaly časové limity - deadliny**. Tyto systémy musí být schopny reagovat na události v reálném čase a vykonávat úlohy v předem definovaných časových intervalech.
+  - Hard real-time: Systém musí splnit časový limit, jinak může dojít k závažným následkům (např. havárie).
+  - Soft real-time: Systém by měl dodržet časový limit, ale jeho porušení nemusí mít fatální následky.
+
+- Preemptivní:
+  - Preemptivní znamená, že proces, který právě běží na procesoru, **může být nuceně přerušen** operačním systémem, aby mohl být procesor přidělen jinému procesu. Toto přerušení (tzv. preempce) je klíčovou vlastností mnoha moderních operačních systémů a plánovacích algoritmů, která umožňuje efektivní správu procesů a zdrojů.
+  - Příklady preemtivních plánování:
+    - Round Robin (RR)
+    - Shortest Remaining Time (SRT)
+    - Priority Scheduling (s preempcí)
+    - Multilevel Queue Scheduling (s preempcí)
+
+- Nepreemptivní:
+  - Nepreemptivní znamená, že proces, který běží na procesoru, **nemůže být nuceně přerušen** operačním systémem, dokud nedokončí svou práci nebo se sám nevzdá procesoru. To znamená, že proces může být na procesoru po delší dobu, což může vést k zablokování nebo zpomalení systému.
+  - Příklady nepreemptivních plánovacích algoritmů:
+    - First-Come, First-Served (FCFS)
+    - Shortest Job Next (SJN)
+    - Priority Based Scheduling (bez preempce)
+    - Multilevel Queue Scheduling (bez preempce)
+
+- MFT:
+  - MFT (**Multiprogramming with a Fixed number of Tasks**) je typ plánovače používaný v dávkových systémech (batch systems), kde je paměť rozdělena na pevný počet částí (partitions) s pevnou velikostí. Každá část paměti je přidělena jednomu procesu. Plánování v tomto prostředí se zaměřuje na efektivní využití dostupné paměti a CPU.
+  - Upřednostňuje I/O vázané operace.
+
+<div style="page-break-after: always;"></div>
+
 - Příklad uvíznutí a vyhladovnění?
   - Starvation (vyhladovnění) je obecná situace, kdy jeden nebo více procesů nebo vláken **nedostávají dostatečné prostředky** (např. CPU čas, paměť, přístup k datům, ...) k dokončení své práce. Procesy/vlákna jsou proto **blokována nebo zpožděna** a nemohou pokračovat.
-  - Deadlock (uvíznutí) je situace, kdy dva nebo více procesů nebo vláken jsou **blokovány** a **čekají na prostředky**, které si navzájem drží. Žádný z procesů nemůže pokračovat, protože každý z nich čeká na uvolnění prostředků, které drží druhý proces.
+  - Deadlock (uvíznutí) je situace, kdy dva nebo více procesů nebo vláken jsou **blokovány** a **čekají na prostředky**, které si navzájem drží (dochází k tomu když jsou splněny všechny Coffmanovy podmínky). Žádný z procesů nemůže pokračovat, protože každý z nich čeká na uvolnění prostředků, které drží druhý proces.
   - Livelock je situace, kdy dva nebo více procesů nebo vláken jsou blokovány, ale **stále aktivně reagují** na situaci a snaží se vyřešit problém. Výsledkem je, že se procesy nebo vlákna neustále snaží vyřešit konflikt, ale tím opět blokují jeden druhého a nedojde k pokroku.
     - Příklad: Dva procesy, které se snaží projít dveřmi, ale každý z nich ustoupí, když vidí, že druhý proces se snaží projít, což vede k tomu, že se nikdo nedostane dál. Toto opakují stále dokola, aniž by se někdo dostal skrz dveře.
 
+- Co jsou Coffmanovy podmínky?
+  - Podmínky, které když jsou splněny, tak může nastat **deadlock**.
+  - Vzájemné vyloučení (**Mutual Exclusion**)
+    - Popis: Určité prostředky (např. tiskárna, soubor, paměťový blok) mohou být přiděleny pouze jednomu procesu/vlákno v daném okamžiku. Jinými slovy, prostředek nemůže být sdílen mezi více procesy, dokud jej proces, který jej drží, neuvolní.
+    - Příklad: Pokud proces A používá tiskárnu, proces B ji nemůže použít, dokud ji A nedokončí a neuvolní.
+  - Držení a čekání (**Hold and Wait**)
+    - Popis: Proces, který již drží jeden nebo více prostředků, žádá o další prostředky, které jsou aktuálně přiděleny jiným procesům. Proces přitom nezpřístupní prostředky, které již drží, dokud nezíská všechny požadované prostředky.
+    - Příklad: Proces A drží prostředek X a čeká na prostředek Y. Proces B drží prostředek Y a čeká na prostředek X. Ani jeden z procesů neuvolní prostředek, který drží, což vede k cyklickému čekání.
+  - Neodnímatelnost (**No Preemption**)
+    - Popis: Prostředky nemohou být nuceně odebrány procesu, který je drží. Může je uvolnit pouze proces, který je drží, a to až poté, co dokončí svou práci.
+    - Příklad: Pokud proces A drží tiskárnu, systém ji nemůže přidělit procesu B, dokud ji proces A sám neuvolní.
+  - Cyklické čekání (**Circular Wait**)
+    - Popis: Existuje cyklus procesů, kde každý proces čeká na prostředek, který drží jiný proces v tomto cyklu.
+    - Příklad: Proces A čeká na prostředek, který drží proces B, proces B čeká na prostředek, který drží proces C, a proces C čeká na prostředek, který drží proces A. Tím vznikne cyklické čekání.
+
+<div style="page-break-after: always;"></div>
+
 - Co je to RoundRobin plánování?
   - Plánovací algoritmus, který rozhoduje o **přidělení času procesoru** jednotlivým procesům v **cyklickém pořadí**. Každý proces dostane časový úsek (kvantum) k běhu, po jehož uplynutí je proces přesunut na konec fronty a je přidělen čas jinému procesu. Pokud proces dokončí svou práci dříve, než uplyne jeho kvantum, je vyřazen z fronty a uvolní místo pro další procesy.
+
 - Jak se rozšíří RoundRobin když potřebuji priority? (více front dle priorit, RR v rámci fronty)
   - Použít přístup multilevel queue scheduling (plánování s více frontami), kde každý proces je zařazen do fronty podle své priority.
     - Fronta s vysokou prioritou
@@ -172,7 +245,7 @@
 
 <div style="page-break-after: always;"></div>
 
-- Jaké jsou datové struktury a základní operace semaforu, monitoru?
+- Jaké jsou datové struktury a základní operace semaforu, monitoru, mutexu?
   - Semafor:
     - Synchronizační mechanismus, který používá celočíselnou proměnnou pro **sledování počtu dostupných prostředků**. Může být binární (podobný zámku) nebo počítaný (umožňuje více vláken přistupovat ke sdílenému prostředku). Procesy/vlákna, která nemohou získat semafor, jsou uložena ve frontě čekajících.
     - Základní operace:
@@ -182,15 +255,85 @@
       - `V()` (signal):
         - Zvyšuje hodnotu semaforu o 1 (značí, že 1 proces opouští kritickou sekci).
         - Pokud je v frontě čekajících proces, probudí jeden z nich.
+      - V C:
+        - `sem_init()`: Inicializace semaforu.
+        - `sem_wait()`: `P()` operace.
+        - `sem_trywait()`: Pokus o `P()` operaci bez blokování.
+        - `sem_post()`: `V()` operace.
+        - `sem_destroy()`: Zrušení semaforu.
+      - V Javě:
+        - `acquire()`: `P()` operace.
+        - `tryAcquire()`: Pokus o `P()` operaci bez blokování.
+        - `release()`: `V()` operace.
+      - Základní stuktury:
+        - Počítadlo: Celé číslo, které určuje počet dostupných prostředků.
+        - Fronta čekajících: Fronta procesů nebo vláken, které čekají na uvolnění semaforu.
+        - Zámek: Zajišťuje vzájemné vyloučení pro kritické sekce.
   - Monitor:
     - Vyšší synchronizační abstrakce, která kombinuje **vzájemné vyloučení** (mutual exclusion) a **podmínkové proměnné** (condition variables) v rámci jedné struktury.
-    - Operace:
+    - Základní operace:
       - `wait()`: Proces se pozastaví a čeká na splnění podmínky. Interní zámek je uvolněn, aby ostatní procesy mohly pokračovat.
       - `signal()`: Probudí jeden z procesů čekajících na podmínkové proměnné. Pokud žádný proces nečeká, operace nemá efekt.
+      - `broadcast()`: Probudí všechny procesy čekající na podmínkové proměnné. Ty by správně měly zkontrolovat podmínkovou proměnnou a rozhodnout, zda mohou pokračovat.
+    - V C:
+      - Nutné implementovat pomocí zámků a podmínkových proměnných.<br><br><br><br><br>
+    - V Javě:
+      - Pomocí klíčového slova `synchronized`.
+      - `syncronized` blok: Zajišťuje vzájemné vyloučení pro kritické sekce.
+      - `wait()`: Čeká na splnění podmínky.
+      - `notify()`: Probudí jeden z čekajících procesů.
+      - `notifyAll()`: Probudí všechny čekající procesy.
+    - Základní struktury:
+      - Podmínková proměnná: Slouží k synchronizaci mezi procesy a k čekání na splnění určité podmínky.
+      - Zámek: Zajišťuje vzájemné vyloučení pro kritické sekce.
+  - Mutex:
+    - Mutex (**mutual exclusion**) je synchronizační primitivum, které umožňuje pouze jednomu vláknu najednou přístup ke sdílenému prostředku. Na rozdíl od semaforu má mutex koncept vlastnictví – vlákno, které mutex zamkne, ho musí také odemknout.
+    - Základní operace mutexu:
+      - Zamknutí mutexu:
+        - Vlákno nebo proces, které chce vstoupit do kritické sekce, musí mutex zamknout. Pokud je mutex již zamčen, vlákno čeká, dokud se mutex neuvolní.
+      - Odemknutí mutexu:
+        - Po dokončení kritické sekce vlákno odemkne mutex, aby ho mohlo použít jiné vlákno.
+      - Zkouška zamčení:
+        - Některé implementace umožňují pokusit se zamknout mutex bez čekání.
+      - V C:
+        - `pthread_mutex_init()`: Inicializace mutexu.
+        - `pthread_mutex_lock()`: Zamknutí mutexu.
+        - `pthread_mutex_trylock()`: Pokus o zamknutí mutexu bez blokování.
+        - `pthread_mutex_unlock()`: Odemknutí mutexu.
+        - `pthread_mutex_destroy()`: Zrušení mutexu.
+      - V Javě (pomocí `ReentrantLock`):
+        - `lock()`: Zamknutí mutexu.
+        - `tryLock()`: Pokus o zamknutí mutexu bez blokování.
+        - `unlock()`: Odemknutí mutexu.
+    - Základní struktury mutexu:
+      - Zámek:
+        - Mutex funguje jako binární zámek, který může být buď zamčený (obsazený), nebo odemčený (volný).
+      - Vlastnictví (v některých implementacích):
+        - V některých systémech, jako Java ReentrantLock, mutex podporuje sledování vlákna, které ho vlastní, a zajistí, že pouze toto vlákno může mutex odemknout.
   
+<div style="page-break-after: always;"></div>
+
 - Čím se liší mutex a semafor?
-  - Mutex (zámek) je synchronizační prvek, který umožňuje **vzájemné vyloučení** (mutual exclusion) pro **kritické sekce kódu**. Používá se k zajištění, že pouze jeden proces nebo vlákno může najednou vstoupit do kritické sekce. Mutex může být buď zamknutý (locked) nebo odemčený (unlocked).
-  - Semafor je synchronizační prvek, který umožňuje **řízení přístupu k sdíleným prostředkům**. Může být binární (0 nebo 1) nebo počítaný (sleduje počet dostupných prostředků). Semafor může být použit pro synchronizaci mezi procesy nebo vlákny, aby se zabránilo problémům jako je závod o podmínky, deadlock nebo vyhladovění.
+  - Mutex dovoluje pouze jednomu vláknu nebo procesu **přistupovat ke sdílenému prostředku**. Proces/Vlákno, které zamkne mutex, ho musí také odemknout.
+  - Semafor dovoluje **více vláknům nebo procesům** přistupovat ke sdílenému prostředku (pokud není binární). Operace semaforu mohou procesy/vlákna používat kdykoliv, bez ohledu na to, který proces je vlastníkem semaforu (nutnost k zajištění mnohonásobného přístupu).
+
+- Hoareho monitor:
+  - Pokud vlákno zavolá funkci signal (probuzení čekajícího vlákna na podmínkové proměnné), **probouzené vlákno získá okamžitě kontrolu nad monitorem**. Vlákno, které volalo signal, je pozastaveno, umístěno do signal fronty a čeká, dokud probuzené vlákno dokončí svou činnost v monitoru.
+  - Výhody:
+    - Model zaručuje silnější konzistenci: při probuzení vlákna je stav monitoru přesně takový, jaký probouzené vlákno očekává.
+    - Jednodušší analyzovatelnost a odvození správnosti, protože programátor nemusí uvažovat o změnách stavu monitoru mezi signal a návratem k běhu vlákna.
+  - Nevýhody:
+    - Vyšší nároky na plánovač a implementaci monitoru, protože signal musí přepnout kontext okamžitě.
+
+- Hansenovo monitor:
+  - Pokud **vlákno zavolá signal**, tak **pokračuje v běhu**. **Probuzené vlákno je pouze přesunuto do fronty čekajících vláken** (ready queue) a bude naplánováno později.
+  - Signal musí být jako poslední volání v monitoru.
+  - Výhody:
+    - Jednodušší implementace, protože vlákno nemusí přerušit svůj běh ihned po volání signal.
+    - Lepší výkon v situacích, kdy se vlákno po signal rychle dokončí a nezabírá zbytečně CPU čas.
+  - Nevýhody:
+    - Stav monitoru může být změněn jinými vlákny předtím, než probuzené vlákno získá kontrolu nad monitorem.
+    - Programátor musí pečlivě zajistit, že probuzené vlákno bude vždy očekávat stav, který nemusí být přesně takový, jaký byl při volání signal (je více omezen).
 
 <div style="page-break-after: always;"></div>
 
@@ -216,19 +359,63 @@
 - Co je to IPC?
   - IPC (Inter-Process Communication) je obecný termín pro **komunikaci mezi procesy** nebo vlákny v rámci operačního systému. Slouží k výměně dat, synchronizaci, sdílení prostředků a koordinaci mezi různými procesy nebo vlákny.
 
-<div style="page-break-after: always;"></div>
-
 - Co je to proces?
   - Instance běžícího programu
   - Má PID, vyžaduje čas na CPU, zabírá paměť
+
+<div style="page-break-after: always;"></div>
+
+- Co je to PCB?
+  - PCB (**Process Control Block**) je datová struktura v jádře operačního systému, která obsahuje informace o aktuálním stavu procesu.
+  - Obsahuje:
+    - Identifikátor procesu (PID).
+    - Stav procesu (běžící, čekající, ukončený).
+    - Registrace CPU (hodnoty registrů při přepínání kontextu).
+    - Informace o paměti (tabulky stránek, segmenty).
+    - Otevřené soubory a I/O zařízení.
+    - Priority a plánovací informace.
+
+- Co je to PCT?
+  - PCT (**Process Control Table**) je tabulka spravovaná operačním systémem, která uchovává informace o všech PCB.
+  - Obsahuje:
+    - Seznam všech procesů a jejich PCB.
+    - Slouží k rychlému vyhledávání a správě procesů.
+    - Umožňuje efektivní plánování, přepínání kontextu a řízení životního cyklu procesů.
+
+- Co je to TLB?
+  - TLB (**Translation Lookaside Buffer**) je speciální hardwarová cache v procesoru, přesněji jeho MMU, která má za úkol urychlit a v některých architekturách vůbec umožnit překlad virtuálních adres na fyzické.
+
+- Co je to MMU?
+  - MMU (**Memory Management Unit**) je hardwarová jednotka v procesoru, která se stará o překlad virtuálních adres na fyzické adresy a řízení přístupu k paměti.
+
+- Co je to virtuální paměť?
+  - Virtuální paměť je technika operačního systému, která umožňuje procesům pracovat s pamětí, která je větší než fyzická paměť počítače. Procesy vidí paměť jako spojitý lineární adresní prostor, který je rozdělen na stránky a mapován na fyzickou paměť pomocí MMU.
 
 - Co je to vlákno?
   - Část procesu, která může být vykonávána paralelně s jinými částmi procesu
   - Sdílí paměť s ostatními vlákny v rámci procesu
 
-- Co je systémové volání?
-  - Mechanismus, který využívají aplikace pro k volání funkcí operačního systému
-  - Lze je realizovat s využitím SW přerušení (v Linuxu konkrétně INT 0x80)
+<div style="page-break-after: always;"></div>
+
+- Stručné definice pojmů spjatých s disky a souborovými systémy:
+  - Filesystem: Struktura pro organizaci a ukládání dat na disku (např. ext4, NTFS, FAT32).
+  - Partition (oddíl): Logicky oddělená část disku, která může obsahovat jeden souborový systém.
+  - Sector: Nejmenší fyzická jednotka pro ukládání dat na disku, obvykle o velikosti 512 bajtů nebo 4 KB.
+  - Cluster/Block: Logická jednotka ukládání dat, skládající se z jednoho nebo více sektorů, používaná souborovým systémem.
+  - Partition Table: Tabulka popisující rozdělení disku na oddíly, například MBR nebo GPT.
+  - MBR (Master Boot Record): Tradiční struktura pro správu oddílů na disku, omezená na 4 primární oddíly a 2 TB.
+  - GPT (GUID Partition Table): Moderní struktura pro správu oddílů, podporuje větší disky a více oddílů než MBR.
+  - Bootloader: Program uložený na začátku disku, který inicializuje operační systém při startu.
+  - Mountpoint: Místo v adresářovém stromu, kde je připojen oddíl nebo zařízení.
+  - Swap Space: Prostor na disku používaný jako dočasné rozšíření operační paměti (RAM).
+  - Logical Volume: Flexibilní oddíl vytvořený pomocí LVM, který může být dynamicky zvětšován nebo zmenšován.
+  - RAID (Redundant Array of Independent Disks): Technologie pro spojení více disků do jednoho logického celku pro zvýšení výkonu nebo redundance.
+  - Sector Alignment: Zarovnání oddílů na fyzické sektory disku pro optimalizaci výkonu.
+  - Disk I/O: Čtení a zápis dat mezi operačním systémem a úložným zařízením.
+  - Partition Scheme: Metoda rozdělení disku (např. MBR nebo GPT), určující, jak jsou data a oddíly organizovány.
+  - Defragmentace: Proces optimalizace disku, který přeskupuje data tak, aby byla uložena v kontinuálních blocích a zvýšila se rychlost čtení a zápisu.
+
+<div style="page-break-after: always;"></div>
 
 ## Otázky praxe
 
@@ -252,6 +439,8 @@
       - x je placeholder pro hesla, která se zde již neukládají oproti starým Unix verzím.
   - /etc/shadow: obsahuje hashem zabezpečené informace o heslech
     - `username:hashed_password:last_change:min:max:warn:inactive:expire`
+
+<div style="page-break-after: always;"></div>
 
 - Jak funguje nastavení přístupových práv pomocí příkazu chmod?
   - Práva: r - read, w - write, e - execute
@@ -295,6 +484,8 @@
 - Jak vypsat návratovou hodnotu posledního příkazu?
   - `$ echo $?`
 
+<div style="page-break-after: always;"></div>
+
 - Jaký význam má první řádka skriptu #!/bin/bash ?
   - Jedná se o shebang a určuje jakým příkazovým procesorem by se měl skript vykonávat
 
@@ -306,7 +497,7 @@
 - Jaký je rozdíl mezi du -h a df -h?
   - `$ du -h`
     - Zobrazuje velikost souborů a adresářů v aktuálním adresáři nebo na specifikovaném místě.
-      - -h: Zobrazení velikostí ve snadno čitelném formátu (např. KB, MB, GB).
+    - -h: Zobrazení velikostí ve snadno čitelném formátu (např. KB, MB, GB).
   - `$ df -h`
     - Zobrazuje informace o dostupném a obsazeném místě na diskových oddílech.
     - -h: Zobrazení velikostí ve snadno čitelném formátu.
@@ -316,20 +507,21 @@
   - `$ wc -l s1.txt`
 
 - Jakým příkazem vyhledám řádky obsahující slovo "example" v souboru s1.txt?
-  - `cat s1.txt | grep example`
+  - `$ cat s1.txt | grep example`
+  - `$ cat zp.md | nl | grep example` - zobrazí včetně čísla řádku
 
 - Jakým příkazem seřadím řádky souboru s1.txt?
-  - `cat s1.txt | sort`
+  - `$ cat s1.txt | sort`
   - flag -r pro reverzní řazení
 
 - Jakým příkazem odstraním duplicitní řádky ze souboru s1.txt?
-  - `cat s1.txt | sort | uniq`
+  - `$ cat s1.txt | sort | uniq`
   - uniq předpokládá, že duplicitní řádky jsou pod sebou, takže je nutné nejdříve seřadit
-  - flag -d pro zobrazení pouze duplicitních řádků
-  - flag -c pro zobrazení počtu duplicitních řádků pro každý řádek
+    - flag -d pro zobrazení pouze duplicitních řádků
+    - flag -c pro zobrazení počtu duplicitních řádků pro každý řádek
 
 - Jakým příkazem přidám před každý neprázdný řádek souboru s1.txt číslo řádku?
-  - `cat s1.txt | nl`
+  - `$ cat s1.txt | nl`
 
 - Co dělá příkaz more?
   - Zobrazuje obsah souboru po částech úměrných velikosti terminálu.
@@ -340,12 +532,13 @@
 - PS, TOP, UNAME -A
   - `ps` -  informace o procesech
   - `ps aux` -  i procesy dalších uživatelů
+  - `top` - další program pro zobrazení informací o procesech (více interaktivní než ps)
   - `uname -a` - informace o verzi jádra
 
 - Co dělá příkaz mount?
   - Zobrazuje připojené souborové systémy
   - Dovoluje připojit nové souborové systémy
-    - `mount -t ext3 /dev/sda4 /mnt/data`
+    - `$ mount -t ext3 /dev/sda4 /mnt/data`
       - (typ fs, co připojujeme, kam)
 
 - /etc/fstab
@@ -370,7 +563,7 @@
   - /sbin
     - Obsahuje systémové binární soubory, které jsou určeny pro správce systému (superuživatele).
     - Příklady:
-      - ifconfig, iptables, reboot, mount.
+      - ifconfig, iptables, reboot, mount.<br><br><br><br><br>
   - /etc
     - Konfigurační soubory systému a aplikací.
     - Příklady:
@@ -411,7 +604,7 @@
     - Typicky se zde instalují programy, které nejsou spravovány balíčkovacím systémem distribuce.
   - /tmp
     - Dočasné soubory vytvářené aplikacemi a systémem.
-    - Data zde nejsou trvalá a často jsou při restartu systému mazána.
+    - Data zde nejsou trvalá a často jsou při restartu systému mazána.<br><br>
   - /dev
     - Obsahuje speciální soubory, které reprezentují zařízení (device files).
     - Příklady:
@@ -436,40 +629,46 @@
     - Příklad: /srv/www může obsahovat data webového serveru.
 
 - Přesměrování vstupu, výstupu a chybového výstupu
-  - `command > file.txt` - přesměrování výstupu do souboru
-  - `command >> file.txt` - přidání výstupu na konec souboru
-  - `command < file.txt` - přesměrování vstupu ze souboru
-  - `command 2> error.txt` - přesměrování chybového výstupu do souboru
-  - `command > file.txt 2>&1` - přesměrování výstupu i chybového výstupu do souboru
+  - `$ command > file.txt` - přesměrování výstupu do souboru
+  - `$ command >> file.txt` - přidání výstupu na konec souboru
+  - `$ command < file.txt` - přesměrování vstupu ze souboru
+  - `$ command 2> error.txt` - přesměrování chybového výstupu do souboru
+  - `$ command > file.txt 2>&1` - přesměrování výstupu i chybového výstupu do souboru
   
 - umask
   - Maska přístupových práv při vytváření souborů
+
+<div style="page-break-after: always;"></div>
 
 - Symbolický a hardlink
   - Symbolický link (symlink):
     - Odkaz na soubor nebo adresář, který může být umístěn v jiném adresáři nebo na jiném oddílu.
     - Symbolický link obsahuje cestu k cílovému souboru nebo adresáři.
     - Při smazání cílového souboru nebo adresáře zůstane symbolický link neplatný.
-    - Vytvoření: `ln -s /cesta/k/cilovy/soubor /cesta/k/symbolicky/link`
+    - Vytvoření: `$ ln -s /cesta/k/cilovy/soubor /cesta/k/symbolicky/link`
   - Hard link:
     - Odkaz na inode souboru, což znamená, že může existovat více vstupů v adresářové struktuře, které odkazují na stejná data.
     - Hard link nemůže odkazovat na adresáře a musí být ve stejném souborovém systému.
     - Při smazání původního souboru nebo adresáře zůstane hard link stále platný. Při změně dat přes inode se změny přes hardlink projeví.
-    - Vytvoření: `ln /cesta/k/cilovy/soubor /cesta/k/hard/link`
+    - Vytvoření: `$ ln /cesta/k/cilovy/soubor /cesta/k/hard/link`
 
 - Nahrazování slov
-  - `echo MaLa VELKA Pismena | tr '[A-Z]' '[a-z]'`
+  - `$ echo MaLa VELKA Pismena | tr '[A-Z]' '[a-z]'`
   - vypíše:
-    - mala velka pismena
-    - znaky z množiny [A-Z] nahrazuje znaky [a-z]
+    - "mala velka pismena"
+  - znaky z množiny [A-Z] nahrazuje znaky [a-z]
 
 - Vypsat seřazeně jména aktuálně přihlášených uživatelů
-  - `who | cut -d' ' -f1 | sort | uniq`
+  - `$ who | cut -d' ' -f1 | sort | uniq`
+    - `who` - vypíše aktuálně přihlášené uživatele
+    - `cut -d' ' -f1` - rozdělí řádky podle mezer a vrátí první sloupec (jméno uživatele)
+    - `sort` - seřadí jména
+    - `uniq` - odstraní duplicitní jména
 
 - Příkaz tee
   - Příkaz `tee` umožňuje zároveň zapisovat výstup do souboru a zobrazovat ho na standardní výstup.
-  - `ls | tee soubor.txt`
-  - Hodí se na pipeování: `ls | tee soubor.txt | grep "soubor"`
+  - `$ ls | tee soubor.txt`
+  - Hodí se na pipeování: `$ ls | tee soubor.txt | grep "soubor"`
 
 - Vnitřní proměnné shellu
   - $0 jméno skriptu
@@ -479,4 +678,47 @@
   - $$ identifikační číslo procesu (PID) aktuálního SHELLu,
   - $! PID procesu spuštěného na pozadí,
   - $? návratový kód naposledy prováděného příkazu,
-  - $@ seznam parametrů ve tvaru "$1" "$2" "$3" "$4" .
+  - $@ seznam parametrů ve tvaru "$1" "$2" "$3" "$4".
+
+- Příkaz `yield`:
+  - Slouží k tomu, aby aktuálně běžící proces nebo vlákno dobrovolně předalo svůj časový úsek na procesoru jiným čekajícím procesům nebo vláknům.
+
+- Příkaz `stat` a filesystémy:
+  - `stat()`:
+    - Vrací informace o konkrétním souboru.
+  - `lstat()`:
+    - Stejné jako stat(), ale pokud je soubor symbolický odkaz, vrací informace o odkazu samotném, nikoli o cílovém souboru.
+  - `fstat()`:
+    - Získává informace o otevřeném souboru na základě jeho popisovače (file descriptor).
+
+- Příkaz `lsblk -f` v Linuxu:
+  - Slouží k zobrazení informací o blocích zařízení (block devices) v systému, přičemž volba -f přidává informace o souborových systémech a jejich vlastnostech.
+
+- Rozdíl mezi ACL a klasickými UNIX právy:
+  - ACL (**Access Control List**) umožňuje definovat specifičtější přístupová práva než klasické UNIX práva.
+
+- Idle thread:
+  - Windows: Zajišťuje, že CPU nezůstane nevyužité, pokud nejsou jiné procesy připraveny.
+  - Linux: Podobně zajišťuje, že CPU zůstane aktivní; rozdíl je v implementaci a plánování, Linux využívá specifické mechanismy jádra.
+
+- Příkaz `killall`:
+  - Ukončuje všechny procesy se zadaným názvem.
+
+- Nejhorší priorita pomoci `nice`:
+  - +19 (nejnižší priorita na úrovni uživatelského plánování).
+
+- Sirotek vs Zombie:
+  - Sirotek (orphan):
+    - Proces, jehož rodičovský proces skončil dříve než on.
+    - Adoptován procesem init (PID 1).
+  - Zombie:
+    - Proces, který skončil, ale jeho rodičovský proces ještě nezískal jeho návratový kód.
+    - Zabírá zdroje, dokud není rodičovský proces informován o jeho ukončení.
+
+- Preemptivní systém - obsahuje přechod běžící -> připravený:
+  - Ano, pokud je proces přerušen vyšší prioritou.
+
+<div style="page-break-after: always;"></div>
+
+- `clone()` a implementace vláken v Linuxu:
+  - Ano, `clone()` se používá k vytvoření vláken s volitelným sdílením prostředků.
