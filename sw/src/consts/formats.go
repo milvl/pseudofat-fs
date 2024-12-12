@@ -1,0 +1,8 @@
+// consts contains all constants used in the application
+package consts
+
+// AllowedPathCharacters is a string containing all allowed characters in a path
+const AllowedPathCharacters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_./"
+
+// AllowedFilesizeUnits is a slice containing all allowed units for a file size
+var AllowedFilesizeUnits = []string{"KB", "MB", "GB", "B"}

@@ -1,0 +1,38 @@
+// consts package contains all the constants used in the project
+package consts
+
+const HelpMsg = `Usage: myfilesystem <filesystem_name>
+A simplified filesystem program based on pseudoFAT.
+
+Commands:
+  cp s1 s2       - Copy file "s1" to destination "s2".
+  mv s1 s2       - Move file "s1" to "s2" or rename "s1" to "s2".
+  rm s1          - Delete file "s1".
+  mkdir a1       - Create directory "a1".
+  rmdir a1       - Remove empty directory "a1".
+  ls [a1]        - List contents of directory "a1" (or current directory if not specified).
+  cat s1         - Display contents of file "s1".
+  cd a1          - Change current directory to "a1".
+  pwd            - Print the current working directory.
+  info a1/s1     - Display cluster information of file "s1" or directory "a1".
+  incp s1 s2     - Import file "s1" from disk to location "s2" in the filesystem.
+  outcp s1 s2    - Export file "s1" from filesystem to "s2" on the disk.
+  load s1        - Load and execute commands from file "s1" sequentially (one command per line).
+  format <size>  - Format the filesystem to the specified size, overwriting existing data.
+  defrag s1      - Defragment file "s1" to ensure its data blocks are stored consecutively.
+
+Example:
+  To create a filesystem, format it, and perform operations:
+    $ myfilesystem myfs.pseudo
+    > format 600MB
+    > mkdir documents
+    > incp report.txt documents/report.txt
+    > ls documents
+    > info documents/report.txt
+`
+
+// UnknownCmdMsg is the message displayed when an unknown command is entered
+const UnknownCmdMsg = "UNKNOWN COMMAND"
+
+// HintMsg is the message displayed to prompt the user for input
+const HintMsg = "Type 'help' for usage information."

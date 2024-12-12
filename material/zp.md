@@ -360,8 +360,10 @@
   - IPC (Inter-Process Communication) je obecný termín pro **komunikaci mezi procesy** nebo vlákny v rámci operačního systému. Slouží k výměně dat, synchronizaci, sdílení prostředků a koordinaci mezi různými procesy nebo vlákny.
 
 - Co je to proces?
-  - Instance běžícího programu
-  - Má PID, vyžaduje čas na CPU, zabírá paměť
+  - Instance běžícího programu.
+  - Má PID, vyžaduje čas na CPU, zabírá paměť.
+  - Každý proces má svůj vlastní adresní prostor.
+  - Každý nový proces má i vlastní **hlavní vlákno**, které vykonává kód programu.
 
 <div style="page-break-after: always;"></div>
 
@@ -394,6 +396,7 @@
 - Co je to vlákno?
   - Část procesu, která může být vykonávána paralelně s jinými částmi procesu
   - Sdílí paměť s ostatními vlákny v rámci procesu
+  - Sdílí PID s ostatními vlákny v rámci procesu
 
 <div style="page-break-after: always;"></div>
 
@@ -455,15 +458,15 @@
     - `$ chmod u=rwx,g=,o= soubor.txt`
     - `$ chmod a+x soubor.txt`
   - Numerický (oktální) způsob nastavení práv
-    - Každé právo má své číslo:
-      - |       |       |       |
+    - Každé právo je reprezentované 3 bitovým číslem (tzn. dekadicky trojčíslí, kdy první číslice reprezentuje práva vlastníka, druhá skupiny a třetí ostatních).
+        | Vlastník | Skupina | Ostatní |
         |-------|-------|-------|
         | u     | g     | o     |
         | rwx   | rwx   | rwx   |
         | \_ \_ \_ | \_ \_ \_ | \_ \_ \_ |
         | 1 1 1 | 1 0 0 | 1 0 0 |
-      - např. 111 100 100 (vlastník vše, group a ostatní pouze čtení)
-      - po převodu každých 3 bitů do decimálu => 7 4 4
+    - např. 111 100 100 (vlastník vše, group a ostatní pouze čtení)
+      - po převodu všech 3 bitů do decimálu => 7 4 4
       - `$ chmod 744 soubor.txt`
         - ekvivalent k `$ chmod u=rwx,g=r,o=r soubor.txt`
   - Argumenty:
@@ -640,7 +643,7 @@
 
 <div style="page-break-after: always;"></div>
 
-- Symbolický a hardlink
+- Symbolický link a hardlink
   - Symbolický link (symlink):
     - Odkaz na soubor nebo adresář, který může být umístěn v jiném adresáři nebo na jiném oddílu.
     - Symbolický link obsahuje cestu k cílovému souboru nebo adresáři.
@@ -698,27 +701,85 @@
   - ACL (**Access Control List**) umožňuje definovat specifičtější přístupová práva než klasické UNIX práva.
 
 - Idle thread:
-  - Windows: Zajišťuje, že CPU nezůstane nevyužité, pokud nejsou jiné procesy připraveny.
-  - Linux: Podobně zajišťuje, že CPU zůstane aktivní; rozdíl je v implementaci a plánování, Linux využívá specifické mechanismy jádra.
+  - Windows: Zajišťuje, že CPU nezůstane nevyužité, pokud nejsou jiné procesy připraveny (**System Idle Process** s nejnižší prioritou - uživatelsky nenastavitelná; jsou vytvořena vlákna pro každé fyzické jádro CPU). Není to proces ve smyslu uživatelských procesů.
+  - Linux: Na Linuxu se nejedná o samostatný proces s vlákny, ale o speciální vlákno v jádře, které běží, když není co dělat.
+  - Obrazně:
+    | Porovnání | Windows (System Idle Process) | Linux (Idle Task) |
+    |-----------|-------------------------------|-------------------|
+    | Běží v uživatelském prostoru? | Ne, běží v jádře | Ne, běží v jádře |
+    | Viditelnost | Viditelný v Správci úloh (PID 0) | Neviditelný v uživatelských nástrojích |
+    | Účel | Spravuje nečinnost CPU a snižuje spotřebu energie | Spravuje nečinnost CPU a snižuje spotřebu energie |
+    | Název | System Idle Process | Idle Task |
+
+<div style="page-break-after: always;"></div>
+
+- Základní procesy a vlákna ve Windows vs Linuxu:
+  - V obou systémech jsou procesy a jejich vlákna identifikovány pomocí PID.
+  - Rozdíly:
+    - Windows:
+      - Každé vlákno má kromě shodného PID procesu, ze kterého pochází, také TID (Thread ID).
+      - TID je unikátní identifikátor vlákna v rámci procesu.
+      - PID 0 je **System Idle Process** (nejedná se o proces ve smyslu uživatelských procesů, ale o konstrukt jádra pro reprezentaci nečinnosti CPU).
+      - PID 4 je **System Process** (reprezentuje jádro systému a jeho vlákna; např. ovladače zařízení, správu paměti, přerušení)
+      - PID 1-3 jsou ze začátku vyhrazeny pro pomocné uživatelské procesy při startu OS (např. *smss.exe*, *csrss.exe*, *winlogon.exe*).
+      - Nové procesy dostávají PID inkrementálně až do maximální hodnoty. Následně se začíná od prvního volného PID.
+    - Linux:
+      - Každé vlákno má kromě shodného PID procesu, ze kterého pochází, také LWP (Lightweight Process ID).
+      - LWP je unikátní identifikátor vlákna v rámci procesu.
+      - PID 0 representuje **Idle Task** (úloha jádra pro reprezentaci nečinnosti CPU).
+      - PID 1 je **init**/**systemd** (první proces spuštěný po startu systému).
+      - Další PIDs jsou:
+        - **kthreadd** (jádrové vlákno pro správu jiných vláken).
+        - **kswapd** (jádrové vlákno pro správu swapování paměti).
+        - **ksoftirqd** (jádrové vlákno pro obsluhu softwarových přerušení).
+      - Následující PIDs jsou pro uživatelské procesy.
+      - Nové procesy dostávají PID na základě volného čísla v tabulce procesů.
+    - Obrazně:
+      | Popis | Windows | Linux |
+      |-------|---------|-------|
+      | První PID | PID 0: System Idle Process | PID 0: Idle Task |
+      | Procesy jádra | PID 4: System Process | PID 2: kthreadd (kernel thread daemon) |
+      | PID 1 | Dynamicky přidělen pro smss.exe nebo jiné | Vždy init (systemd nebo ekvivalent) |
+      | Uživatelský prostor | PIDs začínají dynamicky po úlohách jádra | Začíná na PID 1 po úlohách jádra |
 
 - Příkaz `killall`:
   - Ukončuje všechny procesy se zadaným názvem.
 
-- Nejhorší priorita pomoci `nice`:
+- Nejhorší priorita pomocí `nice`:
   - +19 (nejnižší priorita na úrovni uživatelského plánování).
 
 - Sirotek vs Zombie:
-  - Sirotek (orphan):
+  - Sirotek (**orphan**):
     - Proces, jehož rodičovský proces skončil dříve než on.
     - Adoptován procesem init (PID 1).
   - Zombie:
     - Proces, který skončil, ale jeho rodičovský proces ještě nezískal jeho návratový kód.
     - Zabírá zdroje, dokud není rodičovský proces informován o jeho ukončení.
 
-- Preemptivní systém - obsahuje přechod běžící -> připravený:
+- Preemptivní systém - obsahuje přechod **běžící -> připravený**:
   - Ano, pokud je proces přerušen vyšší prioritou.
-
-<div style="page-break-after: always;"></div>
 
 - `clone()` a implementace vláken v Linuxu:
   - Ano, `clone()` se používá k vytvoření vláken s volitelným sdílením prostředků.
+
+## Praktické úlohy
+
+- COBEGIN/COEND Graf (Kolejiště):
+  - Stavíme kolejiště.
+  - Nejprve můžeme současně začít kupovat koleje (P1), shánět vlaky (P2) a stavět podkladovou desku (P3).
+  - Jakmile máme koupené koleje a postavenou podkladovou desku, můžeme začít stavět koleje (P4).
+  - Když jsou koleje postavené a vlaky koupené, vypravíme vlak (P5).
+  - Video z fungujícího kolejiště nasdílíme na Instagram (P6).<br><br>
+  - Chronologický průběh:
+    - Současně: P1, P2, P3.
+    - Jakmile je P1 a P3 hotové, tak začíná P4.
+    - Jakmile je P4 a P2 hotové, tak začíná P5.
+    - Jakmile je P5 hotové, tak začíná P6.
+
+<div style="page-break-after: always;"></div>
+
+- COBEGIN/COEND Graf ((a + b)\*c - (d - e)\*(f + g)):
+  - Vhodné vyjádřit nejdříve stromovou strukturou.
+
+<div style="page-break-after: always;"></div>
+
