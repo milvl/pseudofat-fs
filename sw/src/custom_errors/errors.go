@@ -37,3 +37,15 @@ var ErrUnknownCmd = errors.New("unknown command")
 
 // ErrHelpWanted is an error for requesting help
 var ErrHelpWanted = errors.New("user requested help message")
+
+// ErrIsDir is an error for chosen file is a directory
+var ErrIsDir = errors.New("chosen file is a directory")
+
+// ErrNilPointer is an error for nil pointer
+var ErrNilPointer = errors.New("nil pointer")
+
+// ErrStructToBytes is an error for converting struct to byte
+var ErrStructToBytes = errors.New("error converting struct to bytes")
+
+// ErrBytesToStruct is an error for converting bytes to struct
+var ErrBytesToStruct = errors.New("error converting bytes to struct")

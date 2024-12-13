@@ -1,10 +1,12 @@
 // consts package contains all the constants used in the project
 package consts
 
-const HelpMsg = `Usage: myfilesystem <filesystem_name>
-A simplified filesystem program based on pseudoFAT.
+const HelpMsg = `Usage: myfilesystem <filesystem_path>
+A simplified filesystem program based on pseudoFAT. The <filesystem_path> must be a valid path to a pseudoFAT filesystem file.
 
 Commands:
+  help           - Display this help message.
+  exit           - Exit the program.
   cp s1 s2       - Copy file "s1" to destination "s2".
   mv s1 s2       - Move file "s1" to "s2" or rename "s1" to "s2".
   rm s1          - Delete file "s1".
@@ -24,11 +26,11 @@ Commands:
 Example:
   To create a filesystem, format it, and perform operations:
     $ myfilesystem myfs.pseudo
-    > format 600MB
-    > mkdir documents
-    > incp report.txt documents/report.txt
-    > ls documents
-    > info documents/report.txt
+    format 600MB
+    mkdir documents
+    incp report.txt documents/report.txt
+    ls documents
+    info documents/report.txt
 `
 
 // UnknownCmdMsg is the message displayed when an unknown command is entered
@@ -36,3 +38,18 @@ const UnknownCmdMsg = "UNKNOWN COMMAND"
 
 // HintMsg is the message displayed to prompt the user for input
 const HintMsg = "Type 'help' for usage information."
+
+// LaunchHintMsg is the message displayed to prompt the user for input
+const LaunchHintMsg = "Launch only with '-h' or '--help' for usage information."
+
+// InvalCmdArgsMsg is the message displayed when the command arguments are invalid
+const InvalFSPathChars = "The path to the filesystem contains invalid characters."
+
+// InvalProgArgsCount is the message displayed when the program arguments are invalid
+const InvalProgArgsCount = "Invalid number of program arguments"
+
+// FSPathTooLong is the message displayed when the filesystem path is too long
+const FSPathIsDir = "The chosen file is a directory."
+
+// FileNotFilesys is the message displayed when the file is not a pseudoFAT filesystem file
+const FileNotFilesys = "Warning: The file is not a pseudoFAT filesystem file. It may be corrupted. It can only be formatted which will ERASE ALL DATA. Proceed with caution."

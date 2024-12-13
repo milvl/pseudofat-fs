@@ -10,6 +10,7 @@ import (
 	"kiv-zos-semestral-work/consts"
 	"kiv-zos-semestral-work/custom_errors"
 	"kiv-zos-semestral-work/logging"
+	"kiv-zos-semestral-work/utils"
 	"os"
 	"os/signal"
 	"sync"
@@ -65,47 +66,93 @@ func acceptCmds(scanner *bufio.Scanner, cmdOut chan *cmd.Command, endFlagChan ch
 
 // interpretCmds reads the commands from the cmdIn channel
 // and interprets them. It sends the result to the stdout.
-func interpretCmds(cmdIn chan *cmd.Command, fsPath string, wg *sync.WaitGroup) {
+func interpretCmds(cmdIn chan *cmd.Command, endFlagChan chan struct{}, fsPath string, wg *sync.WaitGroup) {
 	defer wg.Done()
 
-	endLoop := false
 	for {
-		if endLoop {
-			break
-		}
-
 		pCommand, ok := <-cmdIn
 		if !ok {
 			logging.Debug("cmdIn channel closed, exiting interpretCmds...")
-			endLoop = true
 			break
 		}
 
 		logging.Debug(fmt.Sprintf("Interpreting command: %s", pCommand))
-		// code
+		cmd.ExecuteCommand(pCommand, endFlagChan)
+	}
+}
+
+// handleArgsParserErrAndQuit handles the errors returned by the argument parser.
+func handleArgsParserErrAndQuit(err error) {
+	switch err {
+	case custom_errors.ErrInvalArgsCount:
+		logging.Info("User provided invalid number of arguments")
+		fmt.Printf("%s\n\n%s\n", consts.InvalProgArgsCount, consts.LaunchHintMsg)
+		os.Exit(consts.ExitFailure)
+
+	case custom_errors.ErrHelpWanted:
+		logging.Info("Help requested")
+		fmt.Print(consts.HelpMsg)
+		os.Exit(consts.ExitSuccess)
+
+	case custom_errors.ErrInvalidPathCharacter:
+		logging.Info("User provided invalid path for the file system file")
+		fmt.Printf("%s\n\n%s\n", consts.InvalFSPathChars, consts.LaunchHintMsg)
+		os.Exit(consts.ExitFailure)
+
+	default:
+		logging.Error(fmt.Sprintf("Not specified err: %s", err))
+		os.Exit(consts.ExitFailure)
+	}
+}
+
+// handleFilepathErr handles the errors returned by the filesystem path validation.
+func handleFilepathErr(err error, fsPath string) {
+	switch err {
+	case custom_errors.ErrIsDir:
+		logging.Info(fmt.Sprintf("Filesystem file \"%s\" is a directory", fsPath))
+		fmt.Printf("%s\n\n%s\n", consts.FSPathIsDir, consts.LaunchHintMsg)
+	default:
+		logging.Error(fmt.Sprintf("Not specified err: %s", err))
+	}
+	os.Exit(consts.ExitFailure)
+}
+
+// handleProgramTermination handles the program termination
+func handleProgramTermination(
+	ctx context.Context,
+	cmdBufferChan chan *cmd.Command,
+	pWg *sync.WaitGroup,
+	scannerEndChan chan struct{},
+	interpreterEndChan chan struct{},
+	file *os.File) {
+
+	select {
+	// SIGINT received
+	case <-ctx.Done():
+		print("\n")
+		logging.Debug("Received SIGINT, closing the cmdBufferChan...")
+		close(cmdBufferChan)
+
+		pWg.Wait()
+
+	// EOF or scanner error received
+	case <-scannerEndChan:
+		logging.Debug("Scanner ended, sending end flag to cmdBufferChan...")
+		close(cmdBufferChan)
+
+		pWg.Wait()
+
+	// 'exit' command received
+	case <-interpreterEndChan:
+		logging.Debug("cmdBufferChan closed (exit command received), exiting...")
+		close(cmdBufferChan)
+
+		pWg.Wait()
 	}
 }
 
 func main() {
-	fsPath, err := arg_parser.GetFilenameFromArgs(os.Args)
-	if err != nil {
-		switch err {
-		case custom_errors.ErrInvalArgsCount:
-			logging.Info("User provided invalid number of arguments")
-			fmt.Println("Invalid number of arguments")
-			os.Exit(consts.ExitFailure)
-		case custom_errors.ErrHelpWanted:
-			logging.Info("Help requested")
-			fmt.Print(consts.HelpMsg)
-			os.Exit(consts.ExitSuccess)
-		default:
-			logging.Error(fmt.Sprintf("Not specified err: %s", err))
-			os.Exit(consts.ExitFailure)
-		}
-	}
-
-	logging.Debug(fmt.Sprintf("Filesystem path: %s", fsPath))
-
+	// INITIALIZATION OF CONTROL VARIABLES //
 	// to handle signals
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -117,32 +164,54 @@ func main() {
 	// cmdBufferChan is a channel to send the command to the interpreter
 	cmdBufferChan := make(chan *cmd.Command)
 
+	// interpretEndChan is a channel to signal the end of the interpreter
+	interpreterEndChan := make(chan struct{})
+	// scannerEndChan is a channel to signal the end of the scanner
 	scannerEndChan := make(chan struct{})
 
 	// to ensure that the goroutine is finished in case of signal
 	var wg sync.WaitGroup
 	wg.Add(1)
 
-	go acceptCmds(scanner, cmdBufferChan, scannerEndChan)
-	go interpretCmds(cmdBufferChan, fsPath, &wg)
-
-	// wait for signal or EOF
-	select {
-	// SIGINT received
-	case <-ctx.Done():
-		print("\n")
-		logging.Debug("Received SIGINT, closing the cmdBufferChan...")
-		close(cmdBufferChan)
-
-		// join the interpret goroutine
-		wg.Wait()
-
-	// EOF received - here goroutine is already finished
-	case <-scannerEndChan:
-		logging.Debug("Scanner ended, sending end flag to cmdBufferChan...")
-		close(cmdBufferChan)
-
-		// join the interpret goroutine
-		wg.Wait()
+	// INITIALIZATION OF THE FILE SYSTEM //
+	fsPath, err := arg_parser.GetFilenameFromArgs(os.Args)
+	if err != nil {
+		handleArgsParserErrAndQuit(err)
 	}
+	logging.Debug(fmt.Sprintf("Filesystem path: %s", fsPath))
+
+	fileExists, err := utils.FilepathValid(fsPath)
+	if err != nil {
+		handleFilepathErr(err, fsPath)
+	}
+
+	var file *os.File
+	if !fileExists {
+		logging.Info(fmt.Sprintf("Filesystem file \"%s\" does not exist, creating it...", fsPath))
+		file, err = os.Create(fsPath)
+		if err != nil {
+			logging.Error(fmt.Sprintf("Error creating filesystem file: %s", err))
+			os.Exit(consts.ExitFailure)
+		}
+	} else {
+		file, err = os.Open(fsPath)
+		if err != nil {
+			logging.Error(fmt.Sprintf("Error opening filesystem file: %s", err))
+			os.Exit(consts.ExitFailure)
+		}
+
+		// configure default filesystem in the file
+
+	}
+	defer fmt.Println("Closing file...")
+	defer file.Close()
+
+	// fs, err := cmd.InitFileSystem(file)
+
+	// USER INTERACTION HANDLING //
+	go acceptCmds(scanner, cmdBufferChan, scannerEndChan)
+	go interpretCmds(cmdBufferChan, interpreterEndChan, fsPath, &wg)
+
+	// PROGRAM TERMINATION HANDLING //
+	handleProgramTermination(ctx, cmdBufferChan, &wg, scannerEndChan, interpreterEndChan, file)
 }

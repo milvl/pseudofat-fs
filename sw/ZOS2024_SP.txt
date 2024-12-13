@@ -81,7 +81,6 @@ mohou být zadány jak absolutní, tak relativní cestou):
    FILE NOT FOUND (není zdroj)
 
 
-
 11) Nahraje soubor s1 z pevného disku do umístění s2 ve vašem FS
    incp s1 s2
    Možný výsledek:

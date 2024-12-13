@@ -9,11 +9,11 @@ import (
 
 // GetFilenameFromArgs returns the filename from the arguments
 func GetFilenameFromArgs(args []string) (string, error) {
-	if len(args) < 2 {
+	if len(args) != 2 {
 		return "", custom_errors.ErrInvalArgsCount
 	}
 
-	if strings.ToLower(args[1]) == "--help" && strings.ToLower(args[1]) == "-h" {
+	if strings.ToLower(args[1]) == "--help" || strings.ToLower(args[1]) == "-h" {
 		return "", custom_errors.ErrHelpWanted
 	}
 

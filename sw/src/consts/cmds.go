@@ -7,6 +7,10 @@ const (
 
 	// CurrentDirCommand represents the format of the current directory command
 	CurrDirCommand = "pwd"
+	// HelpCommand represents the format of the help command
+	HelpCommand = "help"
+	// ExitCommand represents the format of the exit command
+	ExitCommand = "exit"
 
 	// TWO WORD COMMANDS //
 

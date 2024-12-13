@@ -6,3 +6,6 @@ const AllowedPathCharacters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVW
 
 // AllowedFilesizeUnits is a slice containing all allowed units for a file size
 var AllowedFilesizeUnits = []string{"KB", "MB", "GB", "B"}
+
+// AuthorID is the ID of the author of the file system
+const AuthorID = "A21B0318P"

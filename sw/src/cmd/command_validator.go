@@ -154,7 +154,10 @@ func ValidateCommand(cmd *Command) error {
 
 	switch cmd.Name {
 	// one word commands
-	case consts.CurrDirCommand:
+	case
+		consts.CurrDirCommand,
+		consts.HelpCommand,
+		consts.ExitCommand:
 		return validateOneWordCommand(cmd)
 
 	// two or three word commands with only paths as arguments
