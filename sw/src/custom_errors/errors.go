@@ -42,10 +42,19 @@ var ErrHelpWanted = errors.New("user requested help message")
 var ErrIsDir = errors.New("chosen file is a directory")
 
 // ErrNilPointer is an error for nil pointer
-var ErrNilPointer = errors.New("nil pointer")
+var ErrNilPointer = errors.New("nil pointer provided")
 
 // ErrStructToBytes is an error for converting struct to byte
 var ErrStructToBytes = errors.New("error converting struct to bytes")
 
 // ErrBytesToStruct is an error for converting bytes to struct
 var ErrBytesToStruct = errors.New("error converting bytes to struct")
+
+// ErrNotPtr is an error for not a pointer
+var ErrNotPtr = errors.New("not a pointer")
+
+// ErrEmptyData is an error for empty data
+var ErrEmptySlice = errors.New("empty slice provided")
+
+// ErrInvalidFileSys is an error for invalid file system
+var ErrInvalidFileSys = errors.New("invalid file system")

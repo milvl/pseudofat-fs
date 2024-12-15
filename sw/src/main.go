@@ -123,8 +123,7 @@ func handleProgramTermination(
 	cmdBufferChan chan *cmd.Command,
 	pWg *sync.WaitGroup,
 	scannerEndChan chan struct{},
-	interpreterEndChan chan struct{},
-	file *os.File) {
+	interpreterEndChan chan struct{}) {
 
 	select {
 	// SIGINT received
@@ -199,14 +198,11 @@ func main() {
 			logging.Error(fmt.Sprintf("Error opening filesystem file: %s", err))
 			os.Exit(consts.ExitFailure)
 		}
-
-		// configure default filesystem in the file
-
 	}
 	defer fmt.Println("Closing file...")
 	defer file.Close()
 
-	// fs, err := cmd.InitFileSystem(file)
+	// TODO: load the filesystem from the file
 
 	// USER INTERACTION HANDLING //
 	go acceptCmds(scanner, cmdBufferChan, scannerEndChan)

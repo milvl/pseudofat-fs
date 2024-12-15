@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"kiv-zos-semestral-work/custom_errors"
+	"reflect"
 )
 
 // StructToBytes converts a struct to bytes. It writes
@@ -22,9 +23,18 @@ func StructToBytes(data interface{}) ([]byte, error) {
 // BytesToStruct converts bytes to a struct. The data
 // are put into the result interface. It expects little
 // endian encoding.
-func BytesToStruct(data []byte, result interface{}) error {
-	buf := bytes.NewReader(data)
-	err := binary.Read(buf, binary.LittleEndian, result)
+func BytesToStruct(data []byte, pResult interface{}) error {
+	// sanity checks
+	if reflect.ValueOf(pResult).Kind() != reflect.Ptr {
+		return custom_errors.ErrNotPtr
+	} else if pResult == nil {
+		return custom_errors.ErrNilPointer
+	} else if len(data) == 0 {
+		return custom_errors.ErrEmptySlice
+	}
+
+	buff := bytes.NewReader(data)
+	err := binary.Read(buff, binary.LittleEndian, pResult)
 	if err != nil {
 		return custom_errors.ErrBytesToStruct
 	}
