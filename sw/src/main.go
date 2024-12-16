@@ -10,6 +10,7 @@ import (
 	"kiv-zos-semestral-work/consts"
 	"kiv-zos-semestral-work/custom_errors"
 	"kiv-zos-semestral-work/logging"
+	"kiv-zos-semestral-work/pseudo_fat"
 	"kiv-zos-semestral-work/utils"
 	"os"
 	"os/signal"
@@ -186,28 +187,62 @@ func main() {
 
 	var file *os.File
 	if !fileExists {
-		logging.Info(fmt.Sprintf("Filesystem file \"%s\" does not exist, creating it...", fsPath))
-		file, err = os.Create(fsPath)
-		if err != nil {
-			logging.Error(fmt.Sprintf("Error creating filesystem file: %s", err))
-			os.Exit(consts.ExitFailure)
-		}
-	} else {
-		file, err = os.Open(fsPath)
-		if err != nil {
-			logging.Error(fmt.Sprintf("Error opening filesystem file: %s", err))
-			os.Exit(consts.ExitFailure)
-		}
+		// 	logging.Info(fmt.Sprintf("Filesystem file \"%s\" does not exist, creating it...", fsPath))
+		// 	file, err = os.Create(fsPath)
+		// 	if err != nil {
+		// 		logging.Error(fmt.Sprintf("Error creating filesystem file: %s", err))
+		// 		os.Exit(consts.ExitFailure)
+		// 	}
+		// } else {
+		// 	file, err = os.Open(fsPath)
+		// 	if err != nil {
+		// 		logging.Error(fmt.Sprintf("Error opening filesystem file: %s", err))
+		// 		os.Exit(consts.ExitFailure)
+		// 	}
+	}
+	logging.Warn(fmt.Sprintf("DEBUG - Creating filesystem file \"%s\"...", fsPath))
+	file, err = os.Create(fsPath)
+	if err != nil {
+		logging.Error(fmt.Sprintf("Error creating filesystem file: %s", err))
+		os.Exit(consts.ExitFailure)
 	}
 	defer fmt.Println("Closing file...")
 	defer file.Close()
 
 	// TODO: load the filesystem from the file
+	// create a dummy filesystem for now
+	pTmpFs := pseudo_fat.GetUninitializedFileSystem()
+	pTmpFs.DiskSize = 4008032
+	pTmpFs.ClusterSize = 4000
+	pTmpFs.FatCount = 1000
+	pTmpFs.Fat01StartAddr = 32
+	pTmpFs.Fat02StartAddr = 4032
+	pTmpFs.DataStartAddr = 8032
+	copy(pTmpFs.Signature[:], consts.AuthorID)
+	logging.Debug(fmt.Sprintf("Dummy filesystem: %s", pTmpFs.ToString()))
+	// convert the filesystem to bytes
+	fsBytes, err := utils.StructToBytes(pTmpFs)
+	if err != nil {
+		logging.Error(fmt.Sprintf("Error converting filesystem to bytes: %s", err))
+		os.Exit(consts.ExitFailure)
+	}
+
+	// write the filesystem to the file
+	// expand the fsBytes to the size of the filesystem
+	fsBytes = append(fsBytes, make([]byte, pTmpFs.DiskSize-uint32(len(fsBytes)))...)
+
+	_, err = file.Write(fsBytes)
+	if err != nil {
+		logging.Error(fmt.Sprintf("Error writing filesystem to the file: %s", err))
+		os.Exit(consts.ExitFailure)
+	}
+
+	_, _, _ = pseudo_fat.GetFileSystem(file)
 
 	// USER INTERACTION HANDLING //
 	go acceptCmds(scanner, cmdBufferChan, scannerEndChan)
 	go interpretCmds(cmdBufferChan, interpreterEndChan, fsPath, &wg)
 
 	// PROGRAM TERMINATION HANDLING //
-	handleProgramTermination(ctx, cmdBufferChan, &wg, scannerEndChan, interpreterEndChan, file)
+	handleProgramTermination(ctx, cmdBufferChan, &wg, scannerEndChan, interpreterEndChan)
 }

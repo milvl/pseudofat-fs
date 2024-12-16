@@ -6,6 +6,7 @@ import (
 	"io"
 	"kiv-zos-semestral-work/consts"
 	"kiv-zos-semestral-work/custom_errors"
+	"kiv-zos-semestral-work/logging"
 	"kiv-zos-semestral-work/utils"
 	"os"
 	"unsafe"
@@ -13,54 +14,56 @@ import (
 
 // validateFileSystem checks if the file system is valid by performing a series of logical checks.
 func validateFileSystem(pFs *FileSystem) error {
-	// TODO: Check this
-
 	// sanity check
 	if pFs == nil {
 		return custom_errors.ErrNilPointer
 	}
 
 	// check basic things
-	if string(pFs.signature[:]) != consts.AuthorID {
+	if string(pFs.Signature[:]) != consts.AuthorID {
+		logging.Info(fmt.Sprintf("Invalid signature: %s", string(pFs.Signature[:])))
 		return custom_errors.ErrInvalidFileSys
 	}
 
-	if pFs.clusterSize == 0 || pFs.diskSize == 0 || pFs.fatCount == 0 {
+	// no size
+	if pFs.ClusterSize <= 0 || pFs.DiskSize <= 0 || pFs.FatCount <= 0 {
+		logging.Info(fmt.Sprintf("Size too small (clusterSize: %d, diskSize: %d, fatCount: %d)", pFs.ClusterSize, pFs.DiskSize, pFs.FatCount))
+		return custom_errors.ErrInvalidFileSys
+	}
+
+	// beyond limits
+	if pFs.ClusterSize > consts.ClusterSize || pFs.DiskSize > consts.MaxFilesystemSize || pFs.FatCount > consts.MaxClusterCount {
+		logging.Info(fmt.Sprintf("Size beyond limits (clusterSize: %d, diskSize: %d, fatCount: %d)", pFs.ClusterSize, pFs.DiskSize, pFs.FatCount))
 		return custom_errors.ErrInvalidFileSys
 	}
 
 	// check if disk size can accommodate the FAT tables and data
-	fatSize := pFs.fatCount * 4 // Assuming 4 bytes per FAT entry
-	dataRegionStart := pFs.fat02StartAddr
+	fatSize := pFs.FatCount * uint32(unsafe.Sizeof(int32(0)))
 
-	if pFs.fat01StartAddr+fatSize > pFs.fat02StartAddr {
-		return fmt.Errorf("FAT1 overlaps with FAT2")
+	minRequiredSize := 2*fatSize + uint32(pFs.ClusterSize)
+	if pFs.DiskSize < minRequiredSize {
+		logging.Info(fmt.Sprintf("Disk size too small (required: %d, available: %d)", minRequiredSize, pFs.DiskSize))
+		return custom_errors.ErrInvalidFileSys
 	}
 
-	if dataRegionStart < (pFs.fat02StartAddr + fatSize) {
-		return fmt.Errorf("Data region overlaps with FAT2")
+	// check if the FAT tables overlap
+	if pFs.Fat01StartAddr+fatSize > pFs.Fat02StartAddr {
+		logging.Info(fmt.Sprintf("FAT tables overlap (fat01StartAddr: %d, fat02StartAddr: %d)", pFs.Fat01StartAddr, pFs.Fat02StartAddr))
+		return custom_errors.ErrInvalidFileSys
+	} else if pFs.DataStartAddr < (pFs.Fat02StartAddr + fatSize) {
+		logging.Info(fmt.Sprintf("Data region overlaps FAT tables (dataStartAddr: %d, fat02StartAddr: %d, fatSize: %d)", pFs.DataStartAddr, pFs.Fat02StartAddr, fatSize))
+		return custom_errors.ErrInvalidFileSys
+	} else if pFs.Fat01StartAddr != uint32(unsafe.Sizeof(FileSystem{})) {
+		logging.Debug(fmt.Sprintf("size of FileSystem: %d", unsafe.Sizeof(FileSystem{})))
+		logging.Info(fmt.Sprintf("FAT01 overlaps the file system structure (fat01StartAddr: %d)", pFs.Fat01StartAddr))
+		return custom_errors.ErrInvalidFileSys
 	}
 
-	// Check if the disk size is sufficient for clusters and metadata
-	totalClusters := (pFs.diskSize - pFs.dataStartAddr) / pFs.clusterSize
-	if totalClusters == 0 {
-		return fmt.Errorf("Insufficient space for any clusters")
-	}
-
-	if totalClusters < pFs.fatCount {
-		return fmt.Errorf("Number of FAT entries exceeds total clusters")
-	}
-
-	// Ensure cluster size is a reasonable value (e.g., not too small or large)
-	if pFs.clusterSize < 512 || pFs.clusterSize > 1024*1024 {
-		return fmt.Errorf("Cluster size %d is out of acceptable range (512B - 1MB)", pFs.clusterSize)
-	}
-
-	// Check if the start addresses align with cluster boundaries
-	if pFs.fat01StartAddr%pFs.clusterSize != 0 ||
-		pFs.fat02StartAddr%pFs.clusterSize != 0 ||
-		pFs.dataStartAddr%pFs.clusterSize != 0 {
-		return fmt.Errorf("Start addresses must align with cluster boundaries")
+	allocatableSpace := pFs.DiskSize - pFs.DataStartAddr
+	clusterCount := allocatableSpace / uint32(pFs.ClusterSize)
+	if clusterCount != pFs.FatCount {
+		logging.Info(fmt.Sprintf("Cluster count does not match FAT count (clusterCount: %d, fatCount: %d)", clusterCount, pFs.FatCount))
+		return custom_errors.ErrInvalidFileSys
 	}
 
 	return nil
@@ -103,7 +106,12 @@ func GetFileSystem(file *os.File) (*FileSystem, []byte, error) {
 	}
 
 	// check if the file system is valid
-	err = validateFileSystem(pFs)
-	return nil, nil, nil //TODO: Implement this
+	err = validateFileSystem(&pFs)
+	if err != nil {
+		return nil, nil, err
+	}
 
+	// exit the system now (DEBUG)
+	logging.Critical("all good, now please be so kind and exit the freaking unfinished system")
+	return &pFs, fsBytes, err
 }

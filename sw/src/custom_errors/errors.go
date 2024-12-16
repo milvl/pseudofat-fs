@@ -58,3 +58,9 @@ var ErrEmptySlice = errors.New("empty slice provided")
 
 // ErrInvalidFileSys is an error for invalid file system
 var ErrInvalidFileSys = errors.New("invalid file system")
+
+// ErrFATOverlap is an error for FAT table overlaps with other FAT table
+var ErrFATOverlap = errors.New("FAT table overlaps with other FAT table")
+
+// ErrDataRegionOverlap is an error for data region overlaps with FAT table
+var ErrDataRegionOverlap = errors.New("Data region overlaps with FAT table")

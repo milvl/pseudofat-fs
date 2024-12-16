@@ -1,24 +1,44 @@
 // pseudo_fat package contains the implementation of a pseudo FAT file system.
 package pseudo_fat
 
-import "kiv-zos-semestral-work/consts"
+import (
+	"fmt"
+	"kiv-zos-semestral-work/consts"
+)
 
-// FileSystem is a struct representing the pseudo FAT file system
+// FileSystem is a struct representing the pseudo FAT file system. It is 31 bytes long.
+//
+// WARNING: The variables are ordered in a way that they are aligned in memory with the
+// smallest possible padding. This is important for the byte handling in the loader.go.
 type FileSystem struct {
-	// signature is the ID of the author of the file system
-	signature [consts.StudentNumLen]byte
-	// diskSize is the size of the disk in bytes
-	diskSize uint32
-	// clusterSize is the size of a cluster in bytes
-	clusterSize uint32
-	// fatCount is the number of FATs in the file system
-	fatCount uint32
-	// fat01StartAddr is the start address of the first FAT
-	fat01StartAddr uint32
-	// fat02StartAddr is the start address of the second FAT
-	fat02StartAddr uint32
-	// dataStartAddr is the start address of the data region
-	dataStartAddr uint32
+	// DiskSize is the size of the disk in bytes
+	DiskSize uint32
+	// FatCount is the number of records in the FAT
+	FatCount uint32
+	// Fat01StartAddr is the start address of the first FAT
+	Fat01StartAddr uint32
+	// Fat02StartAddr is the start address of the second FAT
+	Fat02StartAddr uint32
+	// DataStartAddr is the start address of the data region
+	DataStartAddr uint32
+	// ClusterSize is the size of a cluster in bytes
+	ClusterSize uint16
+	// Signature is the ID of the author of the file system
+	Signature [consts.StudentNumLen]byte
+}
+
+// ToString returns a string representation of the file system
+func (fs *FileSystem) ToString() string {
+	signature := string(fs.Signature[:])
+	return "FileSystem{" +
+		"Signature: " + signature +
+		", DiskSize: " + fmt.Sprint(fs.DiskSize) +
+		", ClusterSize: " + fmt.Sprint(fs.ClusterSize) +
+		", FatCount: " + fmt.Sprint(fs.FatCount) +
+		", Fat01StartAddr: " + fmt.Sprint(fs.Fat01StartAddr) +
+		", Fat02StartAddr: " + fmt.Sprint(fs.Fat02StartAddr) +
+		", DataStartAddr: " + fmt.Sprint(fs.DataStartAddr) +
+		"}"
 }
 
 // GetUninitializedFileSystem returns an uninitialized file system
@@ -26,10 +46,10 @@ func GetUninitializedFileSystem() *FileSystem {
 	return &FileSystem{}
 }
 
-// DirectoryEntry is a struct representing an item in a directory
+// DirectoryEntry is a struct representing an item in a directory. It is 20 bytes long.
 type DirectoryEntry struct {
 	// name is the name of the file or directory
-	name string
+	name [consts.MaxFileNameLength]byte
 	// isFile is a flag indicating if the item is a file
 	isFile bool
 	// size is the size of the file in bytes
