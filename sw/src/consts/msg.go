@@ -53,3 +53,6 @@ const FSPathIsDir = "The chosen file is a directory."
 
 // FileNotFilesys is the message displayed when the file is not a pseudoFAT filesystem file
 const FileNotFilesys = "Warning: The file is not a pseudoFAT filesystem file. It may be corrupted. It can only be formatted which will ERASE ALL DATA. Proceed with caution."
+
+// FSUninitializedMsg is the message displayed when the filesystem is uninitialized
+const FSUninitializedMsg = "File system is uninitialized. It cannot be used until it is formatted."

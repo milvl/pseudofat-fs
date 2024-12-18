@@ -4,6 +4,7 @@ package pseudo_fat
 import (
 	"fmt"
 	"kiv-zos-semestral-work/consts"
+	"unsafe"
 )
 
 // FileSystem is a struct representing the pseudo FAT file system. It is 31 bytes long.
@@ -46,14 +47,31 @@ func GetUninitializedFileSystem() *FileSystem {
 	return &FileSystem{}
 }
 
+// GetSizeOfFileSystem returns the size of the FileSystem struct in bytes
+func GetSizeOfFileSystem() uintptr {
+	fs := GetUninitializedFileSystem()
+	size := uintptr(0)
+	size += unsafe.Sizeof(fs.DiskSize)
+	size += unsafe.Sizeof(fs.FatCount)
+	size += unsafe.Sizeof(fs.Fat01StartAddr)
+	size += unsafe.Sizeof(fs.Fat02StartAddr)
+	size += unsafe.Sizeof(fs.DataStartAddr)
+	size += unsafe.Sizeof(fs.ClusterSize)
+	size += unsafe.Sizeof(fs.Signature)
+
+	return size
+}
+
 // DirectoryEntry is a struct representing an item in a directory. It is 20 bytes long.
 type DirectoryEntry struct {
-	// name is the name of the file or directory
-	name [consts.MaxFileNameLength]byte
-	// isFile is a flag indicating if the item is a file
-	isFile bool
-	// size is the size of the file in bytes
-	size uint32
-	// startCluster is the start cluster of the file
-	startCluster uint32
+	// Name is the name of the file or directory
+	Name [consts.MaxFileNameLength]byte
+	// IsFile is a flag indicating if the item is a file
+	IsFile bool
+	// Size is the size of the file in bytes
+	Size uint32
+	// StartCluster is the start cluster of the file
+	StartCluster uint32
+	// ParentCluster is the start cluster of the parent directory
+	ParentCluster uint32
 }

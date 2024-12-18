@@ -67,7 +67,15 @@ func acceptCmds(scanner *bufio.Scanner, cmdOut chan *cmd.Command, endFlagChan ch
 
 // interpretCmds reads the commands from the cmdIn channel
 // and interprets them. It sends the result to the stdout.
-func interpretCmds(cmdIn chan *cmd.Command, endFlagChan chan struct{}, fsPath string, wg *sync.WaitGroup) {
+func interpretCmds(cmdIn chan *cmd.Command,
+	endFlagChan chan struct{},
+	fsPath string,
+	wg *sync.WaitGroup,
+	pFile *os.File,
+	pFs *pseudo_fat.FileSystem,
+	pFatsRef *[][]int32,
+	pDataRef *[]byte) {
+
 	defer wg.Done()
 
 	for {
@@ -78,7 +86,19 @@ func interpretCmds(cmdIn chan *cmd.Command, endFlagChan chan struct{}, fsPath st
 		}
 
 		logging.Debug(fmt.Sprintf("Interpreting command: %s", pCommand))
-		cmd.ExecuteCommand(pCommand, endFlagChan)
+		err := cmd.ExecuteCommand(pCommand, endFlagChan, pFile, pFs, pFatsRef, pDataRef)
+		if err != nil {
+			switch err {
+			case custom_errors.ErrNilPointer:
+				logging.Error("Nil pointer provided to ExecuteCommand")
+			case custom_errors.ErrFSUninitialized:
+				logging.Info("File system is uninitialized (command requires initialized file system)")
+				fmt.Println(consts.FSUninitializedMsg)
+				fmt.Println(consts.HintMsg)
+			default:
+				logging.Error(fmt.Sprintf("Not specified err: %s", err))
+			}
+		}
 	}
 }
 
@@ -106,12 +126,16 @@ func handleArgsParserErrAndQuit(err error) {
 	}
 }
 
-// handleFilepathErr handles the errors returned by the filesystem path validation.
-func handleFilepathErr(err error, fsPath string) {
+// handleFileErr handles the errors returned by the filesystem path validation.
+func handleFileErr(err error, fsPath string) {
 	switch err {
 	case custom_errors.ErrIsDir:
 		logging.Info(fmt.Sprintf("Filesystem file \"%s\" is a directory", fsPath))
 		fmt.Printf("%s\n\n%s\n", consts.FSPathIsDir, consts.LaunchHintMsg)
+	case custom_errors.ErrCreatingFile:
+		logging.Error(fmt.Sprintf("Error creating filesystem file \"%s\"", fsPath))
+	case custom_errors.ErrOpeningFile:
+		logging.Error(fmt.Sprintf("Error opening filesystem file \"%s\"", fsPath))
 	default:
 		logging.Error(fmt.Sprintf("Not specified err: %s", err))
 	}
@@ -151,6 +175,30 @@ func handleProgramTermination(
 	}
 }
 
+// getFileFromPath returns the file from the path
+func getFileFromPath(fsPath string) (*os.File, error) {
+	fileExists, err := utils.FilepathValid(fsPath)
+	if err != nil {
+		return nil, err
+	}
+
+	var pFile *os.File
+	if !fileExists {
+		logging.Info(fmt.Sprintf("Filesystem file \"%s\" does not exist, creating it...", fsPath))
+		pFile, err = os.Create(fsPath)
+		if err != nil {
+			return nil, custom_errors.ErrCreatingFile
+		}
+	} else {
+		pFile, err = os.OpenFile(fsPath, os.O_CREATE|os.O_RDWR, consts.NewFilePermissions)
+		if err != nil {
+			return nil, custom_errors.ErrOpeningFile
+		}
+	}
+
+	return pFile, nil
+}
+
 func main() {
 	// INITIALIZATION OF CONTROL VARIABLES //
 	// to handle signals
@@ -174,74 +222,31 @@ func main() {
 	wg.Add(1)
 
 	// INITIALIZATION OF THE FILE SYSTEM //
+	// get the filesystem path from the arguments
 	fsPath, err := arg_parser.GetFilenameFromArgs(os.Args)
 	if err != nil {
 		handleArgsParserErrAndQuit(err)
 	}
 	logging.Debug(fmt.Sprintf("Filesystem path: %s", fsPath))
 
-	fileExists, err := utils.FilepathValid(fsPath)
+	// get the pFile from the path
+	pFile, err := getFileFromPath(fsPath)
 	if err != nil {
-		handleFilepathErr(err, fsPath)
-	}
-
-	var file *os.File
-	if !fileExists {
-		// 	logging.Info(fmt.Sprintf("Filesystem file \"%s\" does not exist, creating it...", fsPath))
-		// 	file, err = os.Create(fsPath)
-		// 	if err != nil {
-		// 		logging.Error(fmt.Sprintf("Error creating filesystem file: %s", err))
-		// 		os.Exit(consts.ExitFailure)
-		// 	}
-		// } else {
-		// 	file, err = os.Open(fsPath)
-		// 	if err != nil {
-		// 		logging.Error(fmt.Sprintf("Error opening filesystem file: %s", err))
-		// 		os.Exit(consts.ExitFailure)
-		// 	}
-	}
-	logging.Warn(fmt.Sprintf("DEBUG - Creating filesystem file \"%s\"...", fsPath))
-	file, err = os.Create(fsPath)
-	if err != nil {
-		logging.Error(fmt.Sprintf("Error creating filesystem file: %s", err))
-		os.Exit(consts.ExitFailure)
+		handleFileErr(err, fsPath)
 	}
 	defer fmt.Println("Closing file...")
-	defer file.Close()
+	defer pFile.Close()
 
-	// TODO: load the filesystem from the file
-	// create a dummy filesystem for now
-	pTmpFs := pseudo_fat.GetUninitializedFileSystem()
-	pTmpFs.DiskSize = 4008032
-	pTmpFs.ClusterSize = 4000
-	pTmpFs.FatCount = 1000
-	pTmpFs.Fat01StartAddr = 32
-	pTmpFs.Fat02StartAddr = 4032
-	pTmpFs.DataStartAddr = 8032
-	copy(pTmpFs.Signature[:], consts.AuthorID)
-	logging.Debug(fmt.Sprintf("Dummy filesystem: %s", pTmpFs.ToString()))
-	// convert the filesystem to bytes
-	fsBytes, err := utils.StructToBytes(pTmpFs)
+	// load the filesystem from the file
+	pFs, pFats, pData, err := utils.GetFileSystem(pFile)
 	if err != nil {
-		logging.Error(fmt.Sprintf("Error converting filesystem to bytes: %s", err))
+		logging.Error(fmt.Sprintf("Error getting the filesystem: %s", err))
 		os.Exit(consts.ExitFailure)
 	}
-
-	// write the filesystem to the file
-	// expand the fsBytes to the size of the filesystem
-	fsBytes = append(fsBytes, make([]byte, pTmpFs.DiskSize-uint32(len(fsBytes)))...)
-
-	_, err = file.Write(fsBytes)
-	if err != nil {
-		logging.Error(fmt.Sprintf("Error writing filesystem to the file: %s", err))
-		os.Exit(consts.ExitFailure)
-	}
-
-	_, _, _ = pseudo_fat.GetFileSystem(file)
 
 	// USER INTERACTION HANDLING //
 	go acceptCmds(scanner, cmdBufferChan, scannerEndChan)
-	go interpretCmds(cmdBufferChan, interpreterEndChan, fsPath, &wg)
+	go interpretCmds(cmdBufferChan, interpreterEndChan, fsPath, &wg, pFile, pFs, pFats, pData)
 
 	// PROGRAM TERMINATION HANDLING //
 	handleProgramTermination(ctx, cmdBufferChan, &wg, scannerEndChan, interpreterEndChan)

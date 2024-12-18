@@ -42,4 +42,7 @@ const MaxClusterCount uint32 = 1070530
 const MaxFATSize uint32 = 4282120
 
 // StudentNumLen is the length of the Orion login
-const StudentNumLen = 9
+const StudentNumLen uint8 = 9
+
+// FATableCount is the number of FAT tables
+const FATableCount uint8 = 2

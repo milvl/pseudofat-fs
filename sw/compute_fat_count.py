@@ -2,7 +2,7 @@ import csv
 
 MAX_FS_SIZE = 4294967295  # 4 GB
 CLUSTER_SIZE = 4000  # 4 KB
-FS_STRUCT_SIZE = 32  # Size of FileSystem struct
+FS_STRUCT_SIZE = 31  # size of FileSystem struct
 FAT_ROW_SIZE = 4
 
 with open('fat_count.csv', mode='w') as file:

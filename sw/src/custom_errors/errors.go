@@ -23,6 +23,9 @@ var ErrUnknownPathsCount = errors.New("unknown count of paths for command (logic
 // ErrInvalFormatUnits is an error for invalid units for the format command
 var ErrInvalFormatUnits = errors.New("invalid format units")
 
+// ErrParsingUnits is an error for parsing units
+var ErrParsingUnits = errors.New("error parsing units")
+
 // ErrInvalidFilesizeFormat is an error for invalid file size format
 var ErrInvalidFilesizeFormat = errors.New("invalid file size format")
 
@@ -63,4 +66,31 @@ var ErrInvalidFileSys = errors.New("invalid file system")
 var ErrFATOverlap = errors.New("FAT table overlaps with other FAT table")
 
 // ErrDataRegionOverlap is an error for data region overlaps with FAT table
-var ErrDataRegionOverlap = errors.New("Data region overlaps with FAT table")
+var ErrDataRegionOverlap = errors.New("data region overlaps with FAT table")
+
+// ErrCreatingFile is an error for creating file
+var ErrCreatingFile = errors.New("error creating file")
+
+// ErrOpeningFile is an error for opening file
+var ErrOpeningFile = errors.New("error opening file")
+
+// ErrFSUninitialized is an error for file system is uninitialized
+var ErrFSUninitialized = errors.New("file system is uninitialized")
+
+// ErrDiskTooSmall is an error for disk too small for the filesystem
+var ErrDiskTooSmall = errors.New("chosen disk size is too small for the filesystem")
+
+// ErrInvalidBytesLen is an error for invalid bytes length
+var ErrInvalidBytesLen = errors.New("invalid bytes length")
+
+// ErrInvalidFatCount is an error for invalid FAT count
+var ErrInvalidFatCount = errors.New("invalid FAT count")
+
+// ErrReadingFat is an error for reading FAT
+var ErrReadingFat = errors.New("error reading FAT")
+
+// ErrConvertingFat is an error for converting FAT
+var ErrConvertingFat = errors.New("error converting FAT")
+
+// ErrDataTooSmall is an error for data region is too small
+var ErrDataTooSmall = errors.New("data region is too small")
