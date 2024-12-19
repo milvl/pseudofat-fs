@@ -91,3 +91,6 @@ var ErrDirNotFound = errors.New("directory not found")
 
 // ErrFileNotFound is an error for file not found
 var ErrInvalidPath = errors.New("invalid path")
+
+// ErrDirNotEmpty is an error for directory not empty
+var ErrDirNotEmpty = errors.New("directory not empty")

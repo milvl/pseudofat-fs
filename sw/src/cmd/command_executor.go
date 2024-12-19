@@ -166,6 +166,38 @@ func mkdirCommand(pCommand *Command, pFs *pseudo_fat.FileSystem, pFatsRef *[][]i
 	return true, nil
 }
 
+// rmdirCommand tries to remove the directory.
+func rmdirCommand(pCommand *Command, pFs *pseudo_fat.FileSystem, pFatsRef *[][]int32, pDataRef *[]byte) (bool, error) {
+	// sanity check
+	if pCommand == nil || pFs == nil || pFatsRef == nil || pDataRef == nil {
+		return false, custom_errors.ErrNilPointer
+	}
+	if P_CurrDir == nil {
+		return false, custom_errors.ErrFSUninitialized
+	}
+
+	absPath, err := makeThePathAbsolute(pCommand.Args[0], pFs, pFatsRef, pDataRef)
+	if err != nil {
+		return false, err
+	}
+
+	err = utils.Rmdir(pFs, *pFatsRef, *pDataRef, absPath)
+	if err != nil {
+		switch err {
+		case custom_errors.ErrDirNotFound:
+			fmt.Println(consts.FileNotFound)
+		case custom_errors.ErrDirNotEmpty:
+			fmt.Println(consts.NotEmpty)
+		default:
+			return false, fmt.Errorf("error removing directory: %s", err)
+		}
+
+		return false, nil
+	}
+
+	return true, nil
+}
+
 // ExecuteCommand executes the given command
 func ExecuteCommand(
 	pCommand *Command,
@@ -248,6 +280,12 @@ func ExecuteCommand(
 
 	case consts.MakeDirCommand:
 		fsChanged, err = mkdirCommand(pCommand, pFs, pFatsRef, pDataRef)
+		if err != nil {
+			return err
+		}
+
+	case consts.RemoveDirCommand:
+		fsChanged, err = rmdirCommand(pCommand, pFs, pFatsRef, pDataRef)
 		if err != nil {
 			return err
 		}

@@ -257,6 +257,22 @@ func markEndOfChain(fats [][]int32, clusterIndex uint32) {
 	}
 }
 
+// markFreeCluster marks a cluster as free in the FAT.
+func markFreeCluster(fats [][]int32, clusterIndex uint32) {
+	for i := 0; i < len(fats); i++ {
+		logging.Debug(fmt.Sprintf("Chain for FAT%d: %d -> from %d to %d", i, clusterIndex, fats[i][clusterIndex], consts.FatFree))
+		fats[i][clusterIndex] = consts.FatFree
+	}
+}
+
+// connectClusters connects two clusters in the FAT chain.
+func connectClusters(fats [][]int32, clusterIndex uint32, nextClusterIndex uint32) {
+	for i := 0; i < len(fats); i++ {
+		logging.Debug(fmt.Sprintf("Chain for FAT%d: %d -> from %d to %d", i, clusterIndex, fats[i][clusterIndex], nextClusterIndex))
+		fats[i][clusterIndex] = int32(nextClusterIndex)
+	}
+}
+
 // Mkdir creates a new directory in the specified parent directory.
 //
 // It returns ErrNoFreeCluster if there are no free clusters in the FAT.
@@ -339,6 +355,122 @@ func Mkdir(pFs *pseudo_fat.FileSystem, fats [][]int32, data []byte, absPathToDir
 	// write the new directory entry to the its own cluster
 	byteOffset = int(freeClusterIndex) * int(pFs.ClusterSize)
 	copy(data[byteOffset:], newDirEntryBytes)
+
+	return nil
+}
+
+// removeParentTargetEntry removes the target entry from the parent directory entry chain.
+func removeParentTargetEntry(pFs *pseudo_fat.FileSystem, fats [][]int32, data []byte, pParentDirEntry *pseudo_fat.DirectoryEntry, pTargetDirEntry *pseudo_fat.DirectoryEntry) error {
+	// sanity checks
+	if pFs == nil || fats == nil || data == nil || pParentDirEntry == nil || pTargetDirEntry == nil {
+		return custom_errors.ErrNilPointer
+	}
+
+	fat := fats[0]
+
+	// get the cluster chain for the parent directory
+	clusterChain, err := getClusterChain(pParentDirEntry.StartCluster, fat)
+	if err != nil {
+		return fmt.Errorf("failed to get cluster chain: %w", err)
+	}
+
+	// find the index of entry in the parent directory entry chain and the index of its ancestor
+	var targetEntryIndex int = -1
+	var targetEntryAncestorIndex int = -1
+	for _, entryIndex := range clusterChain {
+		// load the cluster data
+		byteOffset := int(entryIndex) * int(pFs.ClusterSize)
+		clusterData := data[byteOffset : byteOffset+int(pFs.ClusterSize)]
+		pEntry, err := readDirectoryEntryFromCluster(clusterData)
+		if err != nil {
+			return fmt.Errorf("failed to read directory entry: %w", err)
+		}
+
+		if NormalizeStringFromMem(pEntry.Name[:]) == NormalizeStringFromMem(pTargetDirEntry.Name[:]) {
+			targetEntryIndex = int(entryIndex)
+			break
+		}
+
+		targetEntryAncestorIndex = int(entryIndex)
+	}
+
+	if targetEntryIndex == -1 {
+		return fmt.Errorf("target directory entry not found in the parent directory - logic error")
+	}
+
+	// target is last entry in the parent directory
+	if fat[targetEntryIndex] == consts.FatFileEnd {
+		// mark the parent directory entry as empty
+		markFreeCluster(fats, uint32(targetEntryIndex))
+		markEndOfChain(fats, uint32(targetEntryAncestorIndex))
+	} else {
+		// rewiring the FAT chain
+		connectClusters(fats, uint32(targetEntryAncestorIndex), uint32(fat[targetEntryIndex]))
+		markFreeCluster(fats, uint32(targetEntryIndex))
+	}
+
+	// free the target parent directory entry
+	bytesOffset := targetEntryIndex * int(pFs.ClusterSize)
+	copy(data[bytesOffset:], make([]byte, int(pFs.ClusterSize)))
+
+	return nil
+}
+
+// Rmdir removes an existing directory from the specified parent directory.
+//
+// It returns ErrDirNotFound if the target directory does not exist.
+// It returns ErrDirectoryNotEmpty if the directory is not empty.
+// It returns ErrInvalidPath if the path is invalid or points to a file.
+// It returns ErrNilPointer if any of the pointers are nil.
+func Rmdir(pFs *pseudo_fat.FileSystem, fats [][]int32, data []byte, absPathToDir string) error {
+	// sanity checks
+	if pFs == nil || fats == nil || data == nil || absPathToDir == "" {
+		return custom_errors.ErrNilPointer
+	}
+
+	// normalize and parse the path
+	nodes, err := GetNormalizedPathNodes(absPathToDir)
+	if err != nil {
+		return fmt.Errorf("failed to get normalized path: %w", err)
+	}
+
+	// if the taget is root
+	if len(nodes) == 0 {
+		return custom_errors.ErrInvalidPath
+	}
+
+	// get the directory entry of the target directory
+	pDirEntries, err := GetDirEntriesFromRoot(pFs, fats, data, absPathToDir)
+	if err != nil {
+		return err
+	}
+
+	pTargetDirEntry := &pDirEntries[len(pDirEntries)-1]
+	// check if deletion is valid
+	// check if the target is a directory
+	if pTargetDirEntry.IsFile {
+		return custom_errors.ErrInvalidPath
+	}
+	targetEntries, err := GetDirEntries(pFs, pTargetDirEntry, fats, data)
+	if err != nil {
+		return fmt.Errorf("failed to get directory entries: %w", err)
+	}
+	// check if the directory is empty
+	if len(targetEntries) > 0 {
+		return custom_errors.ErrDirNotEmpty
+	}
+
+	// get the parent directory entry
+	pParentDirEntry := &pDirEntries[len(pDirEntries)-2]
+	err = removeParentTargetEntry(pFs, fats, data, pParentDirEntry, pTargetDirEntry)
+	if err != nil {
+		return fmt.Errorf("failed to remove target entry from the parent directory: %w", err)
+	}
+
+	// remove the target directory entry
+	markFreeCluster(fats, pTargetDirEntry.StartCluster)
+	bytesOffset := int(pTargetDirEntry.StartCluster) * int(pFs.ClusterSize)
+	copy(data[bytesOffset:], make([]byte, int(pFs.ClusterSize)))
 
 	return nil
 }

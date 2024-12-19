@@ -29,8 +29,11 @@ func validatePathFormat(path string) error {
 	}
 
 	// check if the path is too long
-	if len(path) > consts.MaxFileNameLength {
-		return custom_errors.ErrPathTooLong
+	parts := strings.Split(path, consts.PathDelimiter)
+	for _, part := range parts {
+		if len(part) > consts.MaxFileNameLength {
+			return custom_errors.ErrPathTooLong
+		}
 	}
 
 	// check if the path format is valid

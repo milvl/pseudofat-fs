@@ -56,3 +56,9 @@ const FileNotFilesys = "Warning: The file is not a pseudoFAT filesystem file. It
 
 // FSUninitializedMsg is the message displayed when the filesystem is uninitialized
 const FSUninitializedMsg = "File system is uninitialized. It cannot be used until it is formatted."
+
+// FileNotFound is the message displayed when the file is not found
+const FileNotFound = "FILE NOT FOUND"
+
+// NotEmpty is the message displayed when the directory is not empty
+const NotEmpty = "NOT EMPTY"
