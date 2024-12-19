@@ -74,6 +74,7 @@ mohou být zadány jak absolutní, tak relativní cestou):
    pwd
    Možný výsledek:
    PATH
+   
 10) Vypíše informace o souboru/adresáři s1/a1 (v jakých clusterech se nachází)
    info a1/s1
    Možný výsledek:

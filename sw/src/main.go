@@ -244,6 +244,15 @@ func main() {
 		os.Exit(consts.ExitFailure)
 	}
 
+	// set the current directory to the root directory
+	if (*pFats != nil) && (*pData != nil) {
+		cmd.P_CurrDir, err = utils.GetRootDirEntry(pFs, *pFats, *pData)
+		if err != nil {
+			logging.Error(fmt.Sprintf("Error getting the root directory entry: %s", err))
+			os.Exit(consts.ExitFailure)
+		}
+	}
+
 	// USER INTERACTION HANDLING //
 	go acceptCmds(scanner, cmdBufferChan, scannerEndChan)
 	go interpretCmds(cmdBufferChan, interpreterEndChan, fsPath, &wg, pFile, pFs, pFats, pData)

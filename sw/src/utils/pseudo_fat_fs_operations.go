@@ -1,0 +1,344 @@
+// utils is a package that contains utility functions for the ZOS project.
+package utils
+
+import (
+	"fmt"
+	"kiv-zos-semestral-work/consts"
+	"kiv-zos-semestral-work/custom_errors"
+	"kiv-zos-semestral-work/logging"
+	"kiv-zos-semestral-work/pseudo_fat"
+	"log"
+	"strings"
+)
+
+// getClusterChain traverses the FAT to collect all clusters in the directory's chain.
+func getClusterChain(startCluster uint32, fat []int32) ([]uint32, error) {
+	if int32(startCluster) == consts.FatFree {
+		return nil, custom_errors.ErrInvalStartCluster
+	}
+
+	var chain []uint32
+	current := startCluster
+
+	for {
+		// validate cluster index
+		if current >= uint32(len(fat)) {
+			return nil, fmt.Errorf("cluster index %d out of bounds", current)
+		}
+
+		chain = append(chain, current)
+
+		next := fat[current]
+
+		if next == consts.FatFileEnd {
+			break
+		}
+
+		if next < 0 {
+			// negative values (other than consts.FatFileEnd) can be considered invalid or used for other purposes
+			return nil, fmt.Errorf("invalid FAT entry at cluster %d: %d", current, next)
+		}
+
+		current = uint32(next)
+	}
+
+	return chain, nil
+}
+
+// readDirectoryEntryFromCluster deserializes DirectoryEntry structs from a specific cluster.
+func readDirectoryEntryFromCluster(clusterData []byte) (*pseudo_fat.DirectoryEntry, error) {
+	// sanity check
+	if clusterData == nil {
+		return nil, custom_errors.ErrNilPointer
+	}
+
+	entry := pseudo_fat.DirectoryEntry{}
+	err := BytesToStruct(clusterData, &entry)
+	if err != nil {
+		return nil, fmt.Errorf("failed to deserialize directory entry: %w", err)
+	}
+
+	if entry.IsFile {
+		return nil, fmt.Errorf("entry is a file, not a directory")
+	}
+
+	return &entry, nil
+}
+
+// findFreeCluster finds the first free cluster in the FAT.
+func findFreeCluster(fat []int32) (uint32, error) {
+	for i, entry := range fat {
+		if entry == consts.FatFree {
+			return uint32(i), nil
+		}
+	}
+
+	return 0, custom_errors.ErrNoFreeCluster
+}
+
+func GetRootDirEntry(pFs *pseudo_fat.FileSystem, fats [][]int32, data []byte) (*pseudo_fat.DirectoryEntry, error) {
+	// sanity checks
+	if pFs == nil || fats == nil || data == nil {
+		return nil, custom_errors.ErrNilPointer
+	}
+
+	// get the root directory cluster
+	rootCluster := uint32(0)
+
+	// read the cluster and deserialize the directory entry
+	byteOffset := int(rootCluster)
+	clusterData := data[byteOffset : byteOffset+int(pFs.ClusterSize)]
+
+	pDirEntry, err := readDirectoryEntryFromCluster(clusterData)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read root directory entry: %w", err)
+	}
+
+	return pDirEntry, nil
+}
+
+// GetDirEntries retrieves all DirectoryEntry structs within the specified directory.
+func GetDirEntries(pFs *pseudo_fat.FileSystem, pDir *pseudo_fat.DirectoryEntry, fats [][]int32, data []byte) ([](*pseudo_fat.DirectoryEntry), error) {
+	// sanity checks
+	if pFs == nil || pDir == nil || fats == nil || data == nil {
+		return nil, custom_errors.ErrNilPointer
+	}
+
+	fat := fats[0]
+
+	// get the cluster chain for the directory
+	clusterChain, err := getClusterChain(pDir.StartCluster, fat)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get cluster chain: %w", err)
+	}
+
+	var entries [](*pseudo_fat.DirectoryEntry)
+	var byteOffset int
+	for _, cluster := range clusterChain {
+		byteOffset = int(cluster) * int(pFs.ClusterSize)
+		clusterData := data[byteOffset : byteOffset+int(pFs.ClusterSize)]
+		if IsClusterEmpty(clusterData) {
+			continue
+		}
+
+		pDirEntry, err := readDirectoryEntryFromCluster(clusterData)
+		if err != nil {
+			log.Printf("Warning: Failed to read entries from cluster %d: %v", cluster, err)
+			continue // Skip clusters with read errors
+		}
+
+		logging.Debug(fmt.Sprintf("Read directory entry: \"%s\"", pDirEntry.ToString()))
+
+		if pDirEntry.StartCluster == pDir.StartCluster {
+			logging.Debug(fmt.Sprintf("Skipping parent directory entry: \"%s\"", pDirEntry.Name))
+			continue
+		}
+		entries = append(entries, pDirEntry)
+	}
+
+	return entries, nil
+}
+
+// GetAbsolutePathFromPwd retrieves the absolute path of the specified directory.
+// TODO: check if this really works
+func GetAbsolutePathFromPwd(pFs *pseudo_fat.FileSystem, pDir *pseudo_fat.DirectoryEntry, fats [][]int32, data []byte) (string, error) {
+	// sanity checks
+	if pFs == nil || pDir == nil || fats == nil || data == nil {
+		return "", custom_errors.ErrNilPointer
+	}
+
+	currDirName := NormalizeStringFromMem(pDir.Name[:])
+	res := currDirName
+
+	// is root
+	if currDirName == consts.PathDelimiter {
+		return consts.PathDelimiter, nil
+	}
+
+	// traverse the directory tree through parent clusters
+	pCurrDir := pDir
+	for {
+		parentClusterDataIndex := int(pCurrDir.ParentCluster) * int(pFs.ClusterSize)
+		parentClusterData := data[parentClusterDataIndex : parentClusterDataIndex+int(pFs.ClusterSize)]
+		pParentDir, err := readDirectoryEntryFromCluster(parentClusterData)
+		if err != nil {
+			return "", fmt.Errorf("failed to read parent directory entry: %w", err)
+		}
+
+		// prepend the directory name to the result
+		parentDirName := NormalizeStringFromMem(pParentDir.Name[:])
+		if pParentDir.StartCluster == pParentDir.ParentCluster {
+			if parentDirName != consts.PathDelimiter {
+				return "", fmt.Errorf("highest parent directory is not root")
+			}
+
+			// parent will be root
+			res = parentDirName + res
+			break
+		}
+
+		res = parentDirName + consts.PathDelimiter + res
+		pCurrDir = pParentDir
+	}
+
+	return res, nil
+}
+
+// GetDirEntriesFromRoot retrieves the directory entry by traversing the absolute path from the root directory.
+func GetDirEntriesFromRoot(pFs *pseudo_fat.FileSystem, fats [][]int32, data []byte, absPath string) ([]pseudo_fat.DirectoryEntry, error) {
+	// sanity checks
+	if pFs == nil || fats == nil || data == nil || absPath == "" {
+		return nil, custom_errors.ErrNilPointer
+	}
+
+	// get the root directory entry
+	pRootDirEntry, err := GetRootDirEntry(pFs, fats, data)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get root directory entry: %w", err)
+	}
+
+	resEntries := make([]pseudo_fat.DirectoryEntry, 0)
+
+	// edge case: root directory
+	if absPath == consts.PathDelimiter || absPath == consts.PathDelimiter+"." {
+		resEntries = append(resEntries, *pRootDirEntry)
+		return resEntries, nil
+	}
+
+	// normalize the path into individual directory names
+	nodes, err := GetNormalizedPathNodes(absPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get normalized path: %w", err)
+	}
+
+	// traverse each directory in the path
+	pCurrDirEntry := pRootDirEntry
+	resEntries = append(resEntries, *pCurrDirEntry)
+	for _, dirName := range nodes {
+		entries, err := GetDirEntries(pFs, pCurrDirEntry, fats, data)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get directory entries: %w", err)
+		}
+
+		nodeFound := false
+		for _, entry := range entries {
+			if NormalizeStringFromMem(entry.Name[:]) == dirName {
+				logging.Debug(fmt.Sprintf("Found node: \"%s\" on path: \"%s\"", dirName, absPath))
+				pCurrDirEntry = entry
+				nodeFound = true
+				resEntries = append(resEntries, *entry)
+				break
+			}
+		}
+
+		if !nodeFound {
+			return nil, custom_errors.ErrDirNotFound
+		}
+	}
+
+	return resEntries, nil
+}
+
+// addToFat adds a new cluster to the FAT chain.
+func addToFat(fats [][]int32, clusterIndex uint32, newClusterIndex uint32) {
+	for i := 0; i < len(fats); i++ {
+		logging.Debug(fmt.Sprintf("Chain for FAT%d: %d -> from %d to %d", i, clusterIndex, fats[i][clusterIndex], newClusterIndex))
+		fats[i][clusterIndex] = int32(newClusterIndex)
+		logging.Debug(fmt.Sprintf("Chain for FAT%d: %d -> from %d to %d", i, newClusterIndex, fats[i][newClusterIndex], consts.FatFileEnd))
+		fats[i][newClusterIndex] = consts.FatFileEnd
+	}
+}
+
+// markEndOfChain marks the end of the chain in the FAT.
+func markEndOfChain(fats [][]int32, clusterIndex uint32) {
+	for i := 0; i < len(fats); i++ {
+		logging.Debug(fmt.Sprintf("Chain for FAT%d: %d -> from %d to %d", i, clusterIndex, fats[i][clusterIndex], consts.FatFileEnd))
+		fats[i][clusterIndex] = consts.FatFileEnd
+	}
+}
+
+// Mkdir creates a new directory in the specified parent directory.
+//
+// It returns ErrNoFreeCluster if there are no free clusters in the FAT.
+// It returns ErrNilPointer if any of the pointers are nil.
+func Mkdir(pFs *pseudo_fat.FileSystem, fats [][]int32, data []byte, absPathToDir string) error {
+	// sanity checks
+	if pFs == nil || fats == nil || data == nil {
+		return custom_errors.ErrNilPointer
+	}
+
+	// check if the target entry already exists
+	_, err := GetDirEntriesFromRoot(pFs, fats, data, absPathToDir)
+	if err != custom_errors.ErrDirNotFound && err != nil {
+		return err
+	}
+
+	nodes, err := GetNormalizedPathNodes(absPathToDir)
+	if err != nil {
+		return fmt.Errorf("failed to get normalized path: %w", err)
+	}
+
+	targetDirName := nodes[len(nodes)-1]
+	var absPathLastNode string
+	if len(nodes) == 1 {
+		absPathLastNode = consts.PathDelimiter
+	} else {
+		absPathLastNode = consts.PathDelimiter + strings.Join(nodes[:len(nodes)-1], consts.PathDelimiter)
+	}
+
+	// traverse the directory tree from the root directory - should be directory
+	pAncestorEntries, err := GetDirEntriesFromRoot(pFs, fats, data, absPathLastNode)
+	if err != nil {
+		return fmt.Errorf("failed while traversing the directory tree: %w", err)
+	}
+	for _, entry := range pAncestorEntries {
+		if entry.IsFile {
+			return custom_errors.ErrInvalidPath
+		}
+	}
+
+	fat := fats[0]
+
+	pLastDir := &pAncestorEntries[len(pAncestorEntries)-1]
+
+	// get the cluster chain for the parent directory
+	clusterChain, err := getClusterChain(pLastDir.StartCluster, fat)
+	if err != nil {
+		return fmt.Errorf("failed to get cluster chain: %w", err)
+	}
+	clusterEndIndex := clusterChain[len(clusterChain)-1]
+
+	// find a free cluster for the parent directory new entry
+	freeClusterIndexParent, err := findFreeCluster(fat)
+	if err != nil {
+		return err
+	}
+
+	// update the parent directory entry chain in the FAT
+	addToFat(fats, clusterEndIndex, freeClusterIndexParent)
+
+	// find a free cluster for the new directory entries (including reference to itself)
+	freeClusterIndex, err := findFreeCluster(fat)
+	if err != nil {
+		return err
+	}
+
+	// write the new directory entry
+	pNewDirEntry := NewDirectoryEntry(false, 0, freeClusterIndex, pLastDir.StartCluster, targetDirName)
+	markEndOfChain(fats, freeClusterIndex)
+
+	// serialize the directory entry
+	newDirEntryBytes, err := StructToBytes(pNewDirEntry)
+	if err != nil {
+		return fmt.Errorf("failed to serialize directory entry: %w", err)
+	}
+
+	// write the new directory entry to the parent directory cluster
+	byteOffset := int(freeClusterIndexParent) * int(pFs.ClusterSize)
+	copy(data[byteOffset:], newDirEntryBytes)
+	// write the new directory entry to the its own cluster
+	byteOffset = int(freeClusterIndex) * int(pFs.ClusterSize)
+	copy(data[byteOffset:], newDirEntryBytes)
+
+	return nil
+}

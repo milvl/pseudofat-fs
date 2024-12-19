@@ -11,6 +11,9 @@ const (
 	HelpCommand = "help"
 	// ExitCommand represents the format of the exit command
 	ExitCommand = "exit"
+	// DebugCommand represents the format of the debug command. This command is used for debugging purposes.
+	// Remove this code for production
+	DebugCommand = "debug"
 
 	// TWO WORD COMMANDS //
 

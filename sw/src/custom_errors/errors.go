@@ -53,20 +53,8 @@ var ErrStructToBytes = errors.New("error converting struct to bytes")
 // ErrBytesToStruct is an error for converting bytes to struct
 var ErrBytesToStruct = errors.New("error converting bytes to struct")
 
-// ErrNotPtr is an error for not a pointer
-var ErrNotPtr = errors.New("not a pointer")
-
-// ErrEmptyData is an error for empty data
-var ErrEmptySlice = errors.New("empty slice provided")
-
 // ErrInvalidFileSys is an error for invalid file system
 var ErrInvalidFileSys = errors.New("invalid file system")
-
-// ErrFATOverlap is an error for FAT table overlaps with other FAT table
-var ErrFATOverlap = errors.New("FAT table overlaps with other FAT table")
-
-// ErrDataRegionOverlap is an error for data region overlaps with FAT table
-var ErrDataRegionOverlap = errors.New("data region overlaps with FAT table")
 
 // ErrCreatingFile is an error for creating file
 var ErrCreatingFile = errors.New("error creating file")
@@ -80,9 +68,6 @@ var ErrFSUninitialized = errors.New("file system is uninitialized")
 // ErrDiskTooSmall is an error for disk too small for the filesystem
 var ErrDiskTooSmall = errors.New("chosen disk size is too small for the filesystem")
 
-// ErrInvalidBytesLen is an error for invalid bytes length
-var ErrInvalidBytesLen = errors.New("invalid bytes length")
-
 // ErrInvalidFatCount is an error for invalid FAT count
 var ErrInvalidFatCount = errors.New("invalid FAT count")
 
@@ -94,3 +79,15 @@ var ErrConvertingFat = errors.New("error converting FAT")
 
 // ErrDataTooSmall is an error for data region is too small
 var ErrDataTooSmall = errors.New("data region is too small")
+
+// ErrInvalStartCluster is an error for invalid start cluster
+var ErrInvalStartCluster = errors.New("invalid start cluster")
+
+// ErrNoFreeCluster is an error for no free cluster
+var ErrNoFreeCluster = errors.New("no free cluster")
+
+// ErrDirNotFound is an error for directory not found
+var ErrDirNotFound = errors.New("directory not found")
+
+// ErrFileNotFound is an error for file not found
+var ErrInvalidPath = errors.New("invalid path")

@@ -75,3 +75,14 @@ type DirectoryEntry struct {
 	// ParentCluster is the start cluster of the parent directory
 	ParentCluster uint32
 }
+
+// ToString returns a string representation of the directory entry
+func (d *DirectoryEntry) ToString() string {
+	return "DirectoryEntry{" +
+		"Name: " + string(d.Name[:]) +
+		", IsFile: " + fmt.Sprint(d.IsFile) +
+		", Size: " + fmt.Sprint(d.Size) +
+		", StartCluster: " + fmt.Sprint(d.StartCluster) +
+		", ParentCluster: " + fmt.Sprint(d.ParentCluster) +
+		"}"
+}

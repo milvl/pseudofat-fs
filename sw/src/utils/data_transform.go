@@ -231,3 +231,42 @@ func ReadFileSystem(pFile *os.File, pFs *pseudo_fat.FileSystem, fatsRef *[][]int
 
 	return nil
 }
+
+// NewDirectoryEntry creates a new directory entry.
+//
+// isFile - true if the entry is a file, false if it is a directory
+//
+// size - size of the entry
+//
+// startCluster - the start cluster of the entry
+//
+// parentCluster - the parent cluster of the entry
+//
+// name - the name of the entry
+func NewDirectoryEntry(isFile bool, size uint32, startCluster uint32, parentCluster uint32, name string) pseudo_fat.DirectoryEntry {
+	res := pseudo_fat.DirectoryEntry{
+		IsFile:        isFile,
+		Size:          size,
+		StartCluster:  startCluster,
+		ParentCluster: parentCluster,
+	}
+	copy(res.Name[:], []byte(name))
+
+	return res
+}
+
+// NormalizeStringFromMem converts the byte slice to a string and trims the null bytes.
+func NormalizeStringFromMem(data []byte) string {
+	return string(bytes.Trim(data, "\x00"))
+}
+
+// IsClusterEmpty checks if the cluster data are empty.
+func IsClusterEmpty(clusterData []byte) bool {
+	for _, b := range clusterData {
+		if b != 0 {
+			return false
+		}
+	}
+
+	return true
+}
