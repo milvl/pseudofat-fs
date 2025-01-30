@@ -76,6 +76,7 @@ func findFreeCluster(fat []int32) (uint32, error) {
 	return 0, custom_errors.ErrNoFreeCluster
 }
 
+// GetRootDirEntry retrieves the root directory entry.
 func GetRootDirEntry(pFs *pseudo_fat.FileSystem, fats [][]int32, data []byte) (*pseudo_fat.DirectoryEntry, error) {
 	// sanity checks
 	if pFs == nil || fats == nil || data == nil {
@@ -197,10 +198,11 @@ func GetDirEntriesFromRoot(pFs *pseudo_fat.FileSystem, fats [][]int32, data []by
 		return nil, fmt.Errorf("failed to get root directory entry: %w", err)
 	}
 
+	// TODO: convert to pointers
 	resEntries := make([]pseudo_fat.DirectoryEntry, 0)
 
 	// edge case: root directory
-	if absPath == consts.PathDelimiter || absPath == consts.PathDelimiter+"." {
+	if absPath == consts.PathDelimiter || absPath == consts.PathDelimiter+consts.CurrDirSymbol {
 		resEntries = append(resEntries, *pRootDirEntry)
 		return resEntries, nil
 	}
@@ -313,19 +315,19 @@ func Mkdir(pFs *pseudo_fat.FileSystem, fats [][]int32, data []byte, absPathToDir
 		}
 	}
 
-	fat := fats[0]
+	referencedFat := fats[0]
 
 	pLastDir := &pAncestorEntries[len(pAncestorEntries)-1]
 
 	// get the cluster chain for the parent directory
-	clusterChain, err := getClusterChain(pLastDir.StartCluster, fat)
+	clusterChain, err := getClusterChain(pLastDir.StartCluster, referencedFat)
 	if err != nil {
 		return fmt.Errorf("failed to get cluster chain: %w", err)
 	}
 	clusterEndIndex := clusterChain[len(clusterChain)-1]
 
 	// find a free cluster for the parent directory new entry
-	freeClusterIndexParent, err := findFreeCluster(fat)
+	freeClusterIndexParent, err := findFreeCluster(referencedFat)
 	if err != nil {
 		return err
 	}
@@ -334,7 +336,7 @@ func Mkdir(pFs *pseudo_fat.FileSystem, fats [][]int32, data []byte, absPathToDir
 	addToFat(fats, clusterEndIndex, freeClusterIndexParent)
 
 	// find a free cluster for the new directory entries (including reference to itself)
-	freeClusterIndex, err := findFreeCluster(fat)
+	freeClusterIndex, err := findFreeCluster(referencedFat)
 	if err != nil {
 		return err
 	}

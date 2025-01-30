@@ -23,7 +23,8 @@ func FilepathValid(path string) (bool, error) {
 	return true, nil
 }
 
-// GetNormalizedPathNodes processes the absolute path. Handles "." and ".." segments.
+// GetNormalizedPathNodes processes the absolute path and returns a slice of normalized path nodes.
+// Handles "." and ".." segments.
 func GetNormalizedPathNodes(absPath string) ([]string, error) {
 	if !strings.HasPrefix(absPath, consts.PathDelimiter) {
 		return nil, fmt.Errorf("path must be absolute")
@@ -36,15 +37,17 @@ func GetNormalizedPathNodes(absPath string) ([]string, error) {
 	var stack []string
 	for _, segment := range segments {
 		switch segment {
-		case "", ".":
+		case "", consts.CurrDirSymbol:
 			// skip empty or current directory segments
 			continue
-		case "..":
+
+		case consts.ParentDirSymbol:
 			if len(stack) > 0 {
 				// pop the last valid directory if possible
 				stack = stack[:len(stack)-1]
 			}
 			// if stack is empty, we're at root; do not pop further
+
 		default:
 			// push the valid directory segment onto the stack
 			stack = append(stack, segment)

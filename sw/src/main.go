@@ -19,14 +19,14 @@ import (
 )
 
 // acceptCmds reads from stdin and parses the input
-// into a command. It sends the command to the cmdOut
+// into a command. It sends the command to the cmdIn
 // channel.
 //
 // Its goroutine is closed by program termination, because
 // the scanner.Scan() is blocking so it was too complicated
 // to try to synchronize its termination with the main
 // goroutine.
-func acceptCmds(scanner *bufio.Scanner, cmdOut chan *cmd.Command, endFlagChan chan struct{}) {
+func acceptCmds(scanner *bufio.Scanner, cmdIn chan *cmd.Command, endFlagChan chan struct{}) {
 	defer logging.Debug("acceptCmds goroutine finished")
 
 	for {
@@ -43,11 +43,11 @@ func acceptCmds(scanner *bufio.Scanner, cmdOut chan *cmd.Command, endFlagChan ch
 					fmt.Println(consts.UnknownCmdMsg)
 					fmt.Println(consts.HintMsg)
 				default:
-					logging.Error(fmt.Sprintf("Not specified err: %s", err))
+					logging.Error(fmt.Sprintf("(ADD CUSTOM MSGS FOR FAILS) - Not specified err: %s", err))
 				}
 			} else {
 				logging.Debug(fmt.Sprintf("Parsed command: %s", pCommand))
-				cmdOut <- pCommand
+				cmdIn <- pCommand
 			}
 
 		} else if err := scanner.Err(); err != nil {
@@ -67,7 +67,7 @@ func acceptCmds(scanner *bufio.Scanner, cmdOut chan *cmd.Command, endFlagChan ch
 
 // interpretCmds reads the commands from the cmdIn channel
 // and interprets them. It sends the result to the stdout.
-func interpretCmds(cmdIn chan *cmd.Command,
+func interpretCmds(cmdOut chan *cmd.Command,
 	endFlagChan chan struct{},
 	fsPath string,
 	wg *sync.WaitGroup,
@@ -79,7 +79,7 @@ func interpretCmds(cmdIn chan *cmd.Command,
 	defer wg.Done()
 
 	for {
-		pCommand, ok := <-cmdIn
+		pCommand, ok := <-cmdOut
 		if !ok {
 			logging.Debug("cmdIn channel closed, exiting interpretCmds...")
 			break
@@ -96,7 +96,7 @@ func interpretCmds(cmdIn chan *cmd.Command,
 				fmt.Println(consts.FSUninitializedMsg)
 				fmt.Println(consts.HintMsg)
 			default:
-				logging.Error(fmt.Sprintf("Not specified err: %s", err))
+				logging.Error(fmt.Sprintf("(ADD CUSTOM MSGS FOR FAILS) - Not specified err: %s", err))
 			}
 		}
 	}
@@ -173,6 +173,8 @@ func handleProgramTermination(
 
 		pWg.Wait()
 	}
+
+	logging.Info("Exiting...")
 }
 
 // getFileFromPath returns the file from the path

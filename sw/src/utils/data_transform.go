@@ -81,6 +81,9 @@ func ParseFSSize(pSize string) (uint32, error) {
 }
 
 // CalculateFSSizes calculates the number of clusters and the size of the data space in bytes.
+//
+// It starts with fat size of 0 and interatively calculates the size of the data space
+// while adjusting the fat size so it fits optimal number of clusters.
 func CalculateFSSizes(size uint32) (uint32, uint32, uint32) {
 	fsStructSize := uint32(pseudo_fat.GetSizeOfFileSystem())
 	fatsSize := uint32(0)
@@ -234,15 +237,8 @@ func ReadFileSystem(pFile *os.File, pFs *pseudo_fat.FileSystem, fatsRef *[][]int
 
 // NewDirectoryEntry creates a new directory entry.
 //
-// isFile - true if the entry is a file, false if it is a directory
-//
-// size - size of the entry
-//
-// startCluster - the start cluster of the entry
-//
-// parentCluster - the parent cluster of the entry
-//
-// name - the name of the entry
+// size is the size of the file in bytes (irelevant for directories).
+// TODO: add error handling.
 func NewDirectoryEntry(isFile bool, size uint32, startCluster uint32, parentCluster uint32, name string) pseudo_fat.DirectoryEntry {
 	res := pseudo_fat.DirectoryEntry{
 		IsFile:        isFile,

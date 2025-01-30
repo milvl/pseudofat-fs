@@ -28,5 +28,11 @@ const AuthorID = "A21B0318P"
 // RootDirName is the name of the root directory
 const PathDelimiter = "/"
 
+// CurrDirSymbol is the symbol for the current directory
+const CurrDirSymbol = "."
+
+// ParentDirSymbol is the symbol for the parent directory
+const ParentDirSymbol = ".."
+
 // NewFilePermissions is the default permissions for a new file
 const NewFilePermissions = 0644

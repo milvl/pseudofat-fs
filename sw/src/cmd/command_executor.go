@@ -82,8 +82,8 @@ func formatCommand(pCommand *Command, pFs *pseudo_fat.FileSystem, pFatsRef *[][]
 	return true, nil
 }
 
-// makeThePathAbsolute tries to make the given path absolute.
-func makeThePathAbsolute(path string, pFs *pseudo_fat.FileSystem, pFatsRef *[][]int32, pDataRef *[]byte) (string, error) {
+// makePathAbs tries to make the given path absolute.
+func makePathAbs(path string, pFs *pseudo_fat.FileSystem, pFatsRef *[][]int32, pDataRef *[]byte) (string, error) {
 	var res string
 
 	if strings.HasPrefix(path, consts.PathDelimiter) {
@@ -124,7 +124,7 @@ func changeDirCommand(pCommand *Command, pFs *pseudo_fat.FileSystem, pFatsRef *[
 	var err error
 
 	// check if the path is absolute
-	absPath, err = makeThePathAbsolute(pCommand.Args[0], pFs, pFatsRef, pDataRef)
+	absPath, err = makePathAbs(pCommand.Args[0], pFs, pFatsRef, pDataRef)
 	if err != nil {
 		return false, err
 	}
@@ -153,7 +153,7 @@ func mkdirCommand(pCommand *Command, pFs *pseudo_fat.FileSystem, pFatsRef *[][]i
 		return false, custom_errors.ErrFSUninitialized
 	}
 
-	absPath, err := makeThePathAbsolute(pCommand.Args[0], pFs, pFatsRef, pDataRef)
+	absPath, err := makePathAbs(pCommand.Args[0], pFs, pFatsRef, pDataRef)
 	if err != nil {
 		return false, err
 	}
@@ -176,7 +176,7 @@ func rmdirCommand(pCommand *Command, pFs *pseudo_fat.FileSystem, pFatsRef *[][]i
 		return false, custom_errors.ErrFSUninitialized
 	}
 
-	absPath, err := makeThePathAbsolute(pCommand.Args[0], pFs, pFatsRef, pDataRef)
+	absPath, err := makePathAbs(pCommand.Args[0], pFs, pFatsRef, pDataRef)
 	if err != nil {
 		return false, err
 	}
@@ -198,7 +198,144 @@ func rmdirCommand(pCommand *Command, pFs *pseudo_fat.FileSystem, pFatsRef *[][]i
 	return true, nil
 }
 
-// ExecuteCommand executes the given command
+// handleUninitializedFSCmd handles the command when the filesystem is not initialized.
+func handleUninitializedFSCmd(pFs *pseudo_fat.FileSystem,
+	pFatsRef *[][]int32,
+	pDataRef *[]byte,
+	pCommand *Command,
+	endFlag chan struct{}) (bool, error) {
+
+	fsChanged := false
+	var err error = nil
+
+	switch pCommand.Name {
+	case consts.FormatCommand:
+		fsChanged, err = formatCommand(pCommand, pFs, pFatsRef, pDataRef)
+		if err != nil {
+			return fsChanged, err
+		}
+
+	case consts.HelpCommand:
+		err = helpCommand()
+		if err != nil {
+			return fsChanged, err
+		}
+
+	case consts.ExitCommand:
+		close(endFlag)
+		return fsChanged, err
+
+	case consts.DebugCommand,
+		consts.CurrDirCommand,
+		consts.ChangeDirCommand,
+		consts.ListCommand,
+		consts.MakeDirCommand,
+		consts.RemoveDirCommand,
+		consts.ConcatCommand,
+		consts.InfoCommand,
+		consts.InterpretScriptCommand,
+		consts.DefragCommand,
+		consts.CopyCommand,
+		consts.MoveCommand,
+		consts.CopyInsideFSCommand,
+		consts.CopyOutsideFSCommand:
+		fmt.Println(consts.FSUninitializedMsg)
+
+	default:
+		return fsChanged, fmt.Errorf("unknown command to execute (logic error): %s", pCommand.Name)
+	}
+
+	return fsChanged, err
+}
+
+// handleInitializedFSCmd handles the command when the filesystem is initialized.
+func handleInitializedFSCmd(pFs *pseudo_fat.FileSystem,
+	pFatsRef *[][]int32,
+	pDataRef *[]byte,
+	pCommand *Command,
+	endFlag chan struct{}) (bool, error) {
+
+	fsChanged := false
+	var err error = nil
+
+	switch pCommand.Name {
+	case consts.HelpCommand:
+		err = helpCommand()
+		if err != nil {
+			return fsChanged, err
+		}
+
+	case consts.ExitCommand:
+		close(endFlag)
+		return fsChanged, err
+
+	case consts.FormatCommand:
+		fsChanged, err = formatCommand(pCommand, pFs, pFatsRef, pDataRef)
+		if err != nil {
+			return fsChanged, err
+		}
+
+	case consts.CurrDirCommand:
+		if P_CurrDir == nil {
+			fmt.Println(consts.FSUninitializedMsg)
+		} else {
+			pwd, err := utils.GetAbsolutePathFromPwd(pFs, P_CurrDir, *pFatsRef, *pDataRef)
+			if err != nil {
+				return fsChanged, err
+			}
+			fmt.Println(pwd)
+		}
+
+	case consts.ChangeDirCommand:
+		fsChanged, err = changeDirCommand(pCommand, pFs, pFatsRef, pDataRef)
+		if err != nil {
+			return fsChanged, err
+		}
+
+	case consts.MakeDirCommand:
+		fsChanged, err = mkdirCommand(pCommand, pFs, pFatsRef, pDataRef)
+		if err != nil {
+			return fsChanged, err
+		}
+
+	case consts.RemoveDirCommand:
+		fsChanged, err = rmdirCommand(pCommand, pFs, pFatsRef, pDataRef)
+		if err != nil {
+			return fsChanged, err
+		}
+
+	case consts.DebugCommand:
+		dirEntries, err := utils.GetDirEntries(pFs, P_CurrDir, *pFatsRef, *pDataRef)
+		if err != nil {
+			logging.Error(fmt.Sprintf("Error getting the directory entries: %s", err))
+			os.Exit(consts.ExitFailure)
+		}
+
+		logging.Debug(fmt.Sprintf("Directory entries count: %d", len(dirEntries)))
+		for i, entry := range dirEntries {
+			logging.Debug(fmt.Sprintf("Entry %d: %s", i, entry.ToString()))
+		}
+
+		logging.Debug("debug pwd: ")
+		if P_CurrDir == nil {
+			logging.Debug(fmt.Sprintf("Current directory: %s", consts.FSUninitializedMsg))
+		} else {
+			pwd, err := utils.GetAbsolutePathFromPwd(pFs, P_CurrDir, *pFatsRef, *pDataRef)
+			if err != nil {
+				return fsChanged, err
+			}
+			logging.Debug(fmt.Sprintf("Current directory: %s", pwd))
+		}
+
+		logging.Debug(fmt.Sprintf("FATS: \n%s", utils.PFormatFats(*pFatsRef)))
+
+	}
+
+	return fsChanged, err
+}
+
+// ExecuteCommand executes the given command.
+// It returns an error if any.
 func ExecuteCommand(
 	pCommand *Command,
 	endFlag chan struct{},
@@ -218,88 +355,28 @@ func ExecuteCommand(
 		}
 	}
 
-	fsChanged := false
+	var fsChanged bool
 	var err error
 
-	// execute the command
-	switch pCommand.Name {
-	case consts.DebugCommand:
-		dirEntries, err := utils.GetDirEntries(pFs, P_CurrDir, *pFatsRef, *pDataRef)
-		if err != nil {
-			logging.Error(fmt.Sprintf("Error getting the directory entries: %s", err))
-			os.Exit(consts.ExitFailure)
-		}
+	// execute idle command
+	if P_CurrDir == nil {
+		fsChanged, err = handleUninitializedFSCmd(pFs, pFatsRef, pDataRef, pCommand, endFlag)
+	} else {
+		fsChanged, err = handleInitializedFSCmd(pFs, pFatsRef, pDataRef, pCommand, endFlag)
+	}
 
-		logging.Debug(fmt.Sprintf("Directory entries count: %d", len(dirEntries)))
-		for i, entry := range dirEntries {
-			logging.Debug(fmt.Sprintf("Entry %d: %s", i, entry.ToString()))
-		}
-
-		logging.Debug("debug pwd: ")
-		if P_CurrDir == nil {
-			logging.Debug(fmt.Sprintf("Current directory: %s", consts.FSUninitializedMsg))
-		} else {
-			pwd, err := utils.GetAbsolutePathFromPwd(pFs, P_CurrDir, *pFatsRef, *pDataRef)
-			if err != nil {
-				return err
-			}
-			logging.Debug(fmt.Sprintf("Current directory: %s", pwd))
-		}
-
-		logging.Debug(fmt.Sprintf("FATS: \n%s", utils.PFormatFats(*pFatsRef)))
-
-	case consts.HelpCommand:
-		return helpCommand()
-
-	case consts.ExitCommand:
-		close(endFlag)
-		return nil
-
-	case consts.FormatCommand:
-		fsChanged, err = formatCommand(pCommand, pFs, pFatsRef, pDataRef)
-		if err != nil {
-			return err
-		}
-
-	case consts.CurrDirCommand:
-		if P_CurrDir == nil {
-			fmt.Println(consts.FSUninitializedMsg)
-		} else {
-			pwd, err := utils.GetAbsolutePathFromPwd(pFs, P_CurrDir, *pFatsRef, *pDataRef)
-			if err != nil {
-				return err
-			}
-			fmt.Println(pwd)
-		}
-
-	case consts.ChangeDirCommand:
-		fsChanged, err = changeDirCommand(pCommand, pFs, pFatsRef, pDataRef)
-		if err != nil {
-			return err
-		}
-
-	case consts.MakeDirCommand:
-		fsChanged, err = mkdirCommand(pCommand, pFs, pFatsRef, pDataRef)
-		if err != nil {
-			return err
-		}
-
-	case consts.RemoveDirCommand:
-		fsChanged, err = rmdirCommand(pCommand, pFs, pFatsRef, pDataRef)
-		if err != nil {
-			return err
-		}
-
-	default:
-		return fmt.Errorf("unknown command to execute (logic error): %s", pCommand.Name)
+	if err != nil {
+		return fmt.Errorf("error executing command: %s", err)
 	}
 
 	// if the filesystem was changed, write it to the file
 	if fsChanged {
+		fmt.Println("Filesystem changed, writing to the file...")
 		err := utils.WriteFileSystem(pFile, pFs, *pFatsRef, *pDataRef)
 		if err != nil {
 			return err
 		}
+		fmt.Println("Updated filesystem written to the file.")
 	}
 
 	return nil

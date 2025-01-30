@@ -6,6 +6,7 @@ import (
 	"strings"
 )
 
+// ParseCommand parses the input string into a Command struct
 func ParseCommand(input string) (*Command, error) {
 	// split the input into words
 	words := strings.Fields(input)
