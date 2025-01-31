@@ -7,7 +7,6 @@ import (
 	"kiv-zos-semestral-work/custom_errors"
 	"kiv-zos-semestral-work/logging"
 	"kiv-zos-semestral-work/pseudo_fat"
-	"log"
 	"strings"
 )
 
@@ -98,11 +97,14 @@ func GetRootDirEntry(pFs *pseudo_fat.FileSystem, fats [][]int32, data []byte) (*
 	return pDirEntry, nil
 }
 
-// GetDirEntries retrieves all DirectoryEntry structs within the specified directory.
+// GetDirEntries returns a slice of pointers to DirectoryEntry structs that belong to the specified directory.
 func GetDirEntries(pFs *pseudo_fat.FileSystem, pDir *pseudo_fat.DirectoryEntry, fats [][]int32, data []byte) ([](*pseudo_fat.DirectoryEntry), error) {
 	// sanity checks
 	if pFs == nil || pDir == nil || fats == nil || data == nil {
 		return nil, custom_errors.ErrNilPointer
+	}
+	if pDir.IsFile {
+		return nil, custom_errors.ErrIsFile
 	}
 
 	fat := fats[0]
@@ -119,16 +121,17 @@ func GetDirEntries(pFs *pseudo_fat.FileSystem, pDir *pseudo_fat.DirectoryEntry, 
 		byteOffset = int(cluster) * int(pFs.ClusterSize)
 		clusterData := data[byteOffset : byteOffset+int(pFs.ClusterSize)]
 		if IsClusterEmpty(clusterData) {
+			logging.Warn(fmt.Sprintf("Cluster %d to read directory entry is empty, skipping...", cluster))
 			continue
 		}
 
 		pDirEntry, err := readDirectoryEntryFromCluster(clusterData)
 		if err != nil {
-			log.Printf("Warning: Failed to read entries from cluster %d: %v", cluster, err)
-			continue // Skip clusters with read errors
+			logging.Error(fmt.Sprintf("Failed to read directory entry from cluster %d: %s", cluster, err))
+			continue
 		}
 
-		logging.Debug(fmt.Sprintf("Read directory entry: \"%s\"", pDirEntry.ToString()))
+		logging.Debug(fmt.Sprintf("Directory entry: \"%s\"", pDirEntry.ToString()))
 
 		if pDirEntry.StartCluster == pDir.StartCluster {
 			logging.Debug(fmt.Sprintf("Skipping parent directory entry: \"%s\"", pDirEntry.Name))
@@ -148,7 +151,7 @@ func GetAbsolutePathFromPwd(pFs *pseudo_fat.FileSystem, pDir *pseudo_fat.Directo
 		return "", custom_errors.ErrNilPointer
 	}
 
-	currDirName := NormalizeStringFromMem(pDir.Name[:])
+	currDirName := getNormalizedStrFromMem(pDir.Name[:])
 	res := currDirName
 
 	// is root
@@ -167,7 +170,7 @@ func GetAbsolutePathFromPwd(pFs *pseudo_fat.FileSystem, pDir *pseudo_fat.Directo
 		}
 
 		// prepend the directory name to the result
-		parentDirName := NormalizeStringFromMem(pParentDir.Name[:])
+		parentDirName := getNormalizedStrFromMem(pParentDir.Name[:])
 		if pParentDir.StartCluster == pParentDir.ParentCluster {
 			if parentDirName != consts.PathDelimiter {
 				return "", fmt.Errorf("highest parent directory is not root")
@@ -185,8 +188,9 @@ func GetAbsolutePathFromPwd(pFs *pseudo_fat.FileSystem, pDir *pseudo_fat.Directo
 	return res, nil
 }
 
-// GetDirEntriesFromRoot retrieves the directory entry by traversing the absolute path from the root directory.
-func GetDirEntriesFromRoot(pFs *pseudo_fat.FileSystem, fats [][]int32, data []byte, absPath string) ([]pseudo_fat.DirectoryEntry, error) {
+// GetDirEntriesFromRoot returns a slice of pointers to DirectoryEntry structs based on the absolute path
+// provided from the root directory.
+func GetDirEntriesFromRoot(pFs *pseudo_fat.FileSystem, fats [][]int32, data []byte, absPath string) ([](*pseudo_fat.DirectoryEntry), error) {
 	// sanity checks
 	if pFs == nil || fats == nil || data == nil || absPath == "" {
 		return nil, custom_errors.ErrNilPointer
@@ -198,12 +202,11 @@ func GetDirEntriesFromRoot(pFs *pseudo_fat.FileSystem, fats [][]int32, data []by
 		return nil, fmt.Errorf("failed to get root directory entry: %w", err)
 	}
 
-	// TODO: convert to pointers
-	resEntries := make([]pseudo_fat.DirectoryEntry, 0)
+	resEntries := make([](*pseudo_fat.DirectoryEntry), 0)
 
 	// edge case: root directory
 	if absPath == consts.PathDelimiter || absPath == consts.PathDelimiter+consts.CurrDirSymbol {
-		resEntries = append(resEntries, *pRootDirEntry)
+		resEntries = append(resEntries, pRootDirEntry)
 		return resEntries, nil
 	}
 
@@ -215,7 +218,7 @@ func GetDirEntriesFromRoot(pFs *pseudo_fat.FileSystem, fats [][]int32, data []by
 
 	// traverse each directory in the path
 	pCurrDirEntry := pRootDirEntry
-	resEntries = append(resEntries, *pCurrDirEntry)
+	resEntries = append(resEntries, pCurrDirEntry)
 	for _, dirName := range nodes {
 		entries, err := GetDirEntries(pFs, pCurrDirEntry, fats, data)
 		if err != nil {
@@ -223,12 +226,12 @@ func GetDirEntriesFromRoot(pFs *pseudo_fat.FileSystem, fats [][]int32, data []by
 		}
 
 		nodeFound := false
-		for _, entry := range entries {
-			if NormalizeStringFromMem(entry.Name[:]) == dirName {
+		for _, pEntry := range entries {
+			if !pEntry.IsFile && getNormalizedStrFromMem(pEntry.Name[:]) == dirName {
 				logging.Debug(fmt.Sprintf("Found node: \"%s\" on path: \"%s\"", dirName, absPath))
-				pCurrDirEntry = entry
+				pCurrDirEntry = pEntry
 				nodeFound = true
-				resEntries = append(resEntries, *entry)
+				resEntries = append(resEntries, pEntry)
 				break
 			}
 		}
@@ -305,19 +308,19 @@ func Mkdir(pFs *pseudo_fat.FileSystem, fats [][]int32, data []byte, absPathToDir
 	}
 
 	// traverse the directory tree from the root directory - should be directory
-	pAncestorEntries, err := GetDirEntriesFromRoot(pFs, fats, data, absPathLastNode)
+	ancestorEntriesRef, err := GetDirEntriesFromRoot(pFs, fats, data, absPathLastNode)
 	if err != nil {
 		return fmt.Errorf("failed while traversing the directory tree: %w", err)
 	}
-	for _, entry := range pAncestorEntries {
-		if entry.IsFile {
+	for _, pEntry := range ancestorEntriesRef {
+		if pEntry.IsFile {
 			return custom_errors.ErrInvalidPath
 		}
 	}
 
 	referencedFat := fats[0]
 
-	pLastDir := &pAncestorEntries[len(pAncestorEntries)-1]
+	pLastDir := ancestorEntriesRef[len(ancestorEntriesRef)-1]
 
 	// get the cluster chain for the parent directory
 	clusterChain, err := getClusterChain(pLastDir.StartCluster, referencedFat)
@@ -388,7 +391,7 @@ func removeParentTargetEntry(pFs *pseudo_fat.FileSystem, fats [][]int32, data []
 			return fmt.Errorf("failed to read directory entry: %w", err)
 		}
 
-		if NormalizeStringFromMem(pEntry.Name[:]) == NormalizeStringFromMem(pTargetDirEntry.Name[:]) {
+		if getNormalizedStrFromMem(pEntry.Name[:]) == getNormalizedStrFromMem(pTargetDirEntry.Name[:]) {
 			targetEntryIndex = int(entryIndex)
 			break
 		}
@@ -447,7 +450,7 @@ func Rmdir(pFs *pseudo_fat.FileSystem, fats [][]int32, data []byte, absPathToDir
 		return err
 	}
 
-	pTargetDirEntry := &pDirEntries[len(pDirEntries)-1]
+	pTargetDirEntry := pDirEntries[len(pDirEntries)-1]
 	// check if deletion is valid
 	// check if the target is a directory
 	if pTargetDirEntry.IsFile {
@@ -463,7 +466,7 @@ func Rmdir(pFs *pseudo_fat.FileSystem, fats [][]int32, data []byte, absPathToDir
 	}
 
 	// get the parent directory entry
-	pParentDirEntry := &pDirEntries[len(pDirEntries)-2]
+	pParentDirEntry := pDirEntries[len(pDirEntries)-2]
 	err = removeParentTargetEntry(pFs, fats, data, pParentDirEntry, pTargetDirEntry)
 	if err != nil {
 		return fmt.Errorf("failed to remove target entry from the parent directory: %w", err)

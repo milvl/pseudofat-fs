@@ -251,8 +251,8 @@ func NewDirectoryEntry(isFile bool, size uint32, startCluster uint32, parentClus
 	return res
 }
 
-// NormalizeStringFromMem converts the byte slice to a string and trims the null bytes.
-func NormalizeStringFromMem(data []byte) string {
+// getNormalizedStrFromMem converts the byte slice to a string and trims the null bytes.
+func getNormalizedStrFromMem(data []byte) string {
 	return string(bytes.Trim(data, "\x00"))
 }
 

@@ -137,7 +137,7 @@ func changeDirCommand(pCommand *Command, pFs *pseudo_fat.FileSystem, pFatsRef *[
 	}
 
 	// set the current directory
-	P_CurrDir = &pDirEntries[len(pDirEntries)-1]
+	P_CurrDir = pDirEntries[len(pDirEntries)-1]
 	logging.Debug(fmt.Sprintf("Current directory set to: %s", P_CurrDir.ToString()))
 
 	return false, nil

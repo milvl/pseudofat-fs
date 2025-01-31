@@ -44,6 +44,9 @@ var ErrHelpWanted = errors.New("user requested help message")
 // ErrIsDir is an error for chosen file is a directory
 var ErrIsDir = errors.New("chosen file is a directory")
 
+// ErrIsFile is an error for chosen file is a file
+var ErrIsFile = errors.New("chosen directory is a file")
+
 // ErrNilPointer is an error for nil pointer
 var ErrNilPointer = errors.New("nil pointer provided")
 
