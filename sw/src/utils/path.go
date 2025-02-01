@@ -56,3 +56,32 @@ func GetNormalizedPathNodes(absPath string) ([]string, error) {
 
 	return stack, nil
 }
+
+// GetPathBasename returns the last segment of the path
+func GetPathBasename(path string) string {
+	if path == "" {
+		return ""
+	}
+
+	segments := strings.Split(path, consts.PathDelimiter)
+	return segments[len(segments)-1]
+}
+
+// GetPathAndBasename returns the path and the last segment of the path
+func GetPathAndBasename(path string) (string, string) {
+	if path == "" {
+		return "", ""
+	}
+
+	segments := strings.Split(path, consts.PathDelimiter)
+	return strings.Join(segments[:len(segments)-1], consts.PathDelimiter), segments[len(segments)-1]
+}
+
+// GetPathSegments returns a slice of path segments
+func GetPathSegments(path string) []string {
+	segments := make([]string, 0)
+	segments = append(segments, consts.PathDelimiter)
+	segments = append(segments, strings.Split(path, consts.PathDelimiter)[1:]...)
+
+	return segments
+}

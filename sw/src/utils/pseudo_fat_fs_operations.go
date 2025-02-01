@@ -188,9 +188,9 @@ func GetAbsolutePathFromPwd(pFs *pseudo_fat.FileSystem, pDir *pseudo_fat.Directo
 	return res, nil
 }
 
-// GetDirEntriesFromRoot returns a slice of pointers to DirectoryEntry structs based on the absolute path
-// provided from the root directory.
-func GetDirEntriesFromRoot(pFs *pseudo_fat.FileSystem, fats [][]int32, data []byte, absPath string) ([](*pseudo_fat.DirectoryEntry), error) {
+// GetBranchDirEntriesFromRoot returns a slice of pointers to DirectoryEntry structs that represent the
+// directory entries on the specified path.
+func GetBranchDirEntriesFromRoot(pFs *pseudo_fat.FileSystem, fats [][]int32, data []byte, absPath string) ([](*pseudo_fat.DirectoryEntry), error) {
 	// sanity checks
 	if pFs == nil || fats == nil || data == nil || absPath == "" {
 		return nil, custom_errors.ErrNilPointer
@@ -279,41 +279,30 @@ func connectClusters(fats [][]int32, clusterIndex uint32, nextClusterIndex uint3
 }
 
 // Mkdir creates a new directory in the specified parent directory.
+// Expects the absPathToDir to be a valid normalized absolute path.
 //
 // It returns ErrNoFreeCluster if there are no free clusters in the FAT.
 // It returns ErrNilPointer if any of the pointers are nil.
-func Mkdir(pFs *pseudo_fat.FileSystem, fats [][]int32, data []byte, absPathToDir string) error {
+func Mkdir(pFs *pseudo_fat.FileSystem, fats [][]int32, data []byte, absNormPathToDir string) error {
 	// sanity checks
 	if pFs == nil || fats == nil || data == nil {
 		return custom_errors.ErrNilPointer
 	}
 
-	// check if the target entry already exists
-	_, err := GetDirEntriesFromRoot(pFs, fats, data, absPathToDir)
-	if err != custom_errors.ErrDirNotFound && err != nil {
+	pathSegments := GetPathSegments(absNormPathToDir)
+	targetDirName := pathSegments[len(pathSegments)-1]
+	ancestorBranchPath := strings.Join(pathSegments[:len(pathSegments)-1], consts.PathDelimiter)
+
+	// sanity check for invalid ancestor path
+	ancestorEntriesRef, err := GetBranchDirEntriesFromRoot(pFs, fats, data, ancestorBranchPath)
+	if err != nil {
 		return err
 	}
 
-	nodes, err := GetNormalizedPathNodes(absPathToDir)
-	if err != nil {
-		return fmt.Errorf("failed to get normalized path: %w", err)
-	}
-
-	targetDirName := nodes[len(nodes)-1]
-	var absPathLastNode string
-	if len(nodes) == 1 {
-		absPathLastNode = consts.PathDelimiter
-	} else {
-		absPathLastNode = consts.PathDelimiter + strings.Join(nodes[:len(nodes)-1], consts.PathDelimiter)
-	}
-
-	// traverse the directory tree from the root directory - should be directory
-	ancestorEntriesRef, err := GetDirEntriesFromRoot(pFs, fats, data, absPathLastNode)
-	if err != nil {
-		return fmt.Errorf("failed while traversing the directory tree: %w", err)
-	}
+	// traverse the directory branch from the root directory - everything should be a directory
 	for _, pEntry := range ancestorEntriesRef {
 		if pEntry.IsFile {
+			logging.Warn(fmt.Sprintf("Target entry \"%s\" is a file, not a directory", getNormalizedStrFromMem(pEntry.Name[:])))
 			return custom_errors.ErrInvalidPath
 		}
 	}
@@ -422,40 +411,40 @@ func removeParentTargetEntry(pFs *pseudo_fat.FileSystem, fats [][]int32, data []
 }
 
 // Rmdir removes an existing directory from the specified parent directory.
+// Expects the absNormPathToDir to be a valid normalized absolute path.
 //
 // It returns ErrDirNotFound if the target directory does not exist.
 // It returns ErrDirectoryNotEmpty if the directory is not empty.
 // It returns ErrInvalidPath if the path is invalid or points to a file.
 // It returns ErrNilPointer if any of the pointers are nil.
-func Rmdir(pFs *pseudo_fat.FileSystem, fats [][]int32, data []byte, absPathToDir string) error {
+func Rmdir(pFs *pseudo_fat.FileSystem, fats [][]int32, data []byte, absNormPathToDir string) error {
 	// sanity checks
-	if pFs == nil || fats == nil || data == nil || absPathToDir == "" {
+	if pFs == nil || fats == nil || data == nil || absNormPathToDir == "" {
 		return custom_errors.ErrNilPointer
 	}
 
-	// normalize and parse the path
-	nodes, err := GetNormalizedPathNodes(absPathToDir)
-	if err != nil {
-		return fmt.Errorf("failed to get normalized path: %w", err)
-	}
+	pathSegments := GetPathSegments(absNormPathToDir)
 
 	// if the taget is root
-	if len(nodes) == 0 {
+	if len(pathSegments) == 0 {
 		return custom_errors.ErrInvalidPath
 	}
 
 	// get the directory entry of the target directory
-	pDirEntries, err := GetDirEntriesFromRoot(pFs, fats, data, absPathToDir)
+	pDirEntries, err := GetBranchDirEntriesFromRoot(pFs, fats, data, absNormPathToDir)
 	if err != nil {
 		return err
+	}
+	// all entries should be directories
+	for _, pDirEntry := range pDirEntries {
+		if pDirEntry.IsFile {
+			logging.Warn(fmt.Sprintf("Target entry \"%s\" is a file, not a directory", getNormalizedStrFromMem(pDirEntry.Name[:])))
+			return custom_errors.ErrInvalidPath
+		}
 	}
 
 	pTargetDirEntry := pDirEntries[len(pDirEntries)-1]
 	// check if deletion is valid
-	// check if the target is a directory
-	if pTargetDirEntry.IsFile {
-		return custom_errors.ErrInvalidPath
-	}
 	targetEntries, err := GetDirEntries(pFs, pTargetDirEntry, fats, data)
 	if err != nil {
 		return fmt.Errorf("failed to get directory entries: %w", err)

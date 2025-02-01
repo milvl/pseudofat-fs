@@ -117,6 +117,12 @@ func WriteFileSystem(pFile *os.File, pFs *pseudo_fat.FileSystem, fatsRef [][]int
 		return err
 	}
 
+	// if new size is smaller than the old size, truncate the file
+	err = pFile.Truncate(int64(pFs.DiskSize))
+	if err != nil {
+		return err
+	}
+
 	writtenBytes := uint32(0)
 
 	// write the file system structure

@@ -97,3 +97,9 @@ var ErrInvalidPath = errors.New("invalid path")
 
 // ErrDirNotEmpty is an error for directory not empty
 var ErrDirNotEmpty = errors.New("directory not empty")
+
+// ErrInvalidDirName is an error for invalid directory name
+var ErrInvalidDirName = errors.New("invalid directory name")
+
+// ErrInvalidFileName is an error for invalid file name
+var ErrDirAlreadyExists = errors.New("directory already exists")

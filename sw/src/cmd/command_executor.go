@@ -82,12 +82,15 @@ func formatCommand(pCommand *Command, pFs *pseudo_fat.FileSystem, pFatsRef *[][]
 	return true, nil
 }
 
-// makePathAbs tries to make the given path absolute.
-func makePathAbs(path string, pFs *pseudo_fat.FileSystem, pFatsRef *[][]int32, pDataRef *[]byte) (string, error) {
+// makePathNormAbs tries to make the given path normalized and absolute.
+func makePathNormAbs(path string, pFs *pseudo_fat.FileSystem, pFatsRef *[][]int32, pDataRef *[]byte) (string, error) {
 	var res string
 
+	// path is absolute
 	if strings.HasPrefix(path, consts.PathDelimiter) {
 		res = path
+
+		// path is relative
 	} else {
 		// construct the absolute path
 		absCurrPath, err := utils.GetAbsolutePathFromPwd(pFs, P_CurrDir, *pFatsRef, *pDataRef)
@@ -124,14 +127,14 @@ func changeDirCommand(pCommand *Command, pFs *pseudo_fat.FileSystem, pFatsRef *[
 	var err error
 
 	// check if the path is absolute
-	absPath, err = makePathAbs(pCommand.Args[0], pFs, pFatsRef, pDataRef)
+	absPath, err = makePathNormAbs(pCommand.Args[0], pFs, pFatsRef, pDataRef)
 	if err != nil {
 		return false, err
 	}
 	logging.Debug(fmt.Sprintf("Absolute path from pwd constructed: %s", absPath))
 
 	// get the directory entry
-	pDirEntries, err := utils.GetDirEntriesFromRoot(pFs, *pFatsRef, *pDataRef, absPath)
+	pDirEntries, err := utils.GetBranchDirEntriesFromRoot(pFs, *pFatsRef, *pDataRef, absPath)
 	if err != nil {
 		return false, err
 	}
@@ -153,12 +156,12 @@ func mkdirCommand(pCommand *Command, pFs *pseudo_fat.FileSystem, pFatsRef *[][]i
 		return false, custom_errors.ErrFSUninitialized
 	}
 
-	absPath, err := makePathAbs(pCommand.Args[0], pFs, pFatsRef, pDataRef)
+	absNormPath, err := makePathNormAbs(pCommand.Args[0], pFs, pFatsRef, pDataRef)
 	if err != nil {
 		return false, err
 	}
 
-	err = utils.Mkdir(pFs, *pFatsRef, *pDataRef, absPath)
+	err = utils.Mkdir(pFs, *pFatsRef, *pDataRef, absNormPath)
 	if err != nil {
 		return false, err
 	}
@@ -176,7 +179,13 @@ func rmdirCommand(pCommand *Command, pFs *pseudo_fat.FileSystem, pFatsRef *[][]i
 		return false, custom_errors.ErrFSUninitialized
 	}
 
-	absPath, err := makePathAbs(pCommand.Args[0], pFs, pFatsRef, pDataRef)
+	// check if the directory name is valid
+	dirName := utils.GetPathBasename(pCommand.Args[0])
+	if dirName == consts.CurrDirSymbol || dirName == consts.ParentDirSymbol || dirName == "" {
+		return false, custom_errors.ErrInvalidDirName
+	}
+
+	absPath, err := makePathNormAbs(pCommand.Args[0], pFs, pFatsRef, pDataRef)
 	if err != nil {
 		return false, err
 	}
