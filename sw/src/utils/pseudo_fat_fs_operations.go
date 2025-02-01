@@ -311,6 +311,17 @@ func Mkdir(pFs *pseudo_fat.FileSystem, fats [][]int32, data []byte, absNormPathT
 
 	pLastDir := ancestorEntriesRef[len(ancestorEntriesRef)-1]
 
+	// check if the target directory entry already exists
+	entries, err := GetDirEntries(pFs, pLastDir, fats, data)
+	if err != nil {
+		return fmt.Errorf("failed to get directory entries: %w", err)
+	}
+	for _, pEntry := range entries {
+		if getNormalizedStrFromMem(pEntry.Name[:]) == targetDirName {
+			return custom_errors.ErrEntryExists
+		}
+	}
+
 	// get the cluster chain for the parent directory
 	clusterChain, err := getClusterChain(pLastDir.StartCluster, referencedFat)
 	if err != nil {
@@ -417,7 +428,7 @@ func removeParentTargetEntry(pFs *pseudo_fat.FileSystem, fats [][]int32, data []
 // It returns ErrDirectoryNotEmpty if the directory is not empty.
 // It returns ErrInvalidPath if the path is invalid or points to a file.
 // It returns ErrNilPointer if any of the pointers are nil.
-func Rmdir(pFs *pseudo_fat.FileSystem, fats [][]int32, data []byte, absNormPathToDir string) error {
+func Rmdir(pFs *pseudo_fat.FileSystem, fats [][]int32, data []byte, p_pwd *pseudo_fat.DirectoryEntry, absNormPathToDir string) error {
 	// sanity checks
 	if pFs == nil || fats == nil || data == nil || absNormPathToDir == "" {
 		return custom_errors.ErrNilPointer
@@ -452,6 +463,11 @@ func Rmdir(pFs *pseudo_fat.FileSystem, fats [][]int32, data []byte, absNormPathT
 	// check if the directory is empty
 	if len(targetEntries) > 0 {
 		return custom_errors.ErrDirNotEmpty
+	}
+
+	// if pwd is the target directory
+	if pTargetDirEntry.StartCluster == p_pwd.StartCluster {
+		return custom_errors.ErrDirInUse
 	}
 
 	// get the parent directory entry

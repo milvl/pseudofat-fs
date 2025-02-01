@@ -103,3 +103,9 @@ var ErrInvalidDirName = errors.New("invalid directory name")
 
 // ErrInvalidFileName is an error for invalid file name
 var ErrDirAlreadyExists = errors.New("directory already exists")
+
+// ErrEntryExists is an error for entry already exists
+var ErrEntryExists = errors.New("entry already exists")
+
+// ErrDirInUse is an error for directory in use
+var ErrDirInUse = errors.New("directory is currently in use (try changing current directory)")

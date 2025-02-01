@@ -2,6 +2,7 @@
 package cmd
 
 import (
+	"bytes"
 	"fmt"
 	"kiv-zos-semestral-work/consts"
 	"kiv-zos-semestral-work/custom_errors"
@@ -9,11 +10,26 @@ import (
 	"kiv-zos-semestral-work/pseudo_fat"
 	"kiv-zos-semestral-work/utils"
 	"os"
+	"sort"
 	"strings"
 )
 
 // P_CurrDir is a global variable that holds the current directory
 var P_CurrDir *pseudo_fat.DirectoryEntry = nil
+
+// sortDirectoryEntries sorts the entries placing directories first and then sorting by name.
+// It sorts the slice in place.
+func sortDirectoryEntries(entries []*pseudo_fat.DirectoryEntry) {
+	sort.Slice(entries, func(i, j int) bool {
+		// directories first
+		if entries[i].IsFile != entries[j].IsFile {
+			return !entries[i].IsFile
+		}
+
+		// then lexicographical comparison
+		return bytes.Compare(entries[i].Name[:], entries[j].Name[:]) < 0
+	})
+}
 
 // helpCommand prints the help message
 func helpCommand() error {
@@ -83,7 +99,7 @@ func formatCommand(pCommand *Command, pFs *pseudo_fat.FileSystem, pFatsRef *[][]
 }
 
 // makePathNormAbs tries to make the given path normalized and absolute.
-func makePathNormAbs(path string, pFs *pseudo_fat.FileSystem, pFatsRef *[][]int32, pDataRef *[]byte) (string, error) {
+func makePathNormAbs(path string, pFs *pseudo_fat.FileSystem, fatsRef [][]int32, dataRef []byte) (string, error) {
 	var res string
 
 	// path is absolute
@@ -93,7 +109,7 @@ func makePathNormAbs(path string, pFs *pseudo_fat.FileSystem, pFatsRef *[][]int3
 		// path is relative
 	} else {
 		// construct the absolute path
-		absCurrPath, err := utils.GetAbsolutePathFromPwd(pFs, P_CurrDir, *pFatsRef, *pDataRef)
+		absCurrPath, err := utils.GetAbsolutePathFromPwd(pFs, P_CurrDir, fatsRef, dataRef)
 		if err != nil {
 			return "", err
 		}
@@ -114,9 +130,9 @@ func makePathNormAbs(path string, pFs *pseudo_fat.FileSystem, pFatsRef *[][]int3
 // Always returns false as the filesystem is not changed.
 // Returns ErrDirNotFound if the directory is not found.
 // Otherwise an error is returned.
-func changeDirCommand(pCommand *Command, pFs *pseudo_fat.FileSystem, pFatsRef *[][]int32, pDataRef *[]byte) (bool, error) {
+func changeDirCommand(pCommand *Command, pFs *pseudo_fat.FileSystem, fatsRef [][]int32, dataRef []byte) (bool, error) {
 	// sanity check
-	if pCommand == nil || pFs == nil || pFatsRef == nil || pDataRef == nil {
+	if pCommand == nil || pFs == nil || fatsRef == nil || fatsRef[0] == nil || dataRef == nil {
 		return false, custom_errors.ErrNilPointer
 	}
 	if P_CurrDir == nil {
@@ -127,14 +143,14 @@ func changeDirCommand(pCommand *Command, pFs *pseudo_fat.FileSystem, pFatsRef *[
 	var err error
 
 	// check if the path is absolute
-	absPath, err = makePathNormAbs(pCommand.Args[0], pFs, pFatsRef, pDataRef)
+	absPath, err = makePathNormAbs(pCommand.Args[0], pFs, fatsRef, dataRef)
 	if err != nil {
 		return false, err
 	}
 	logging.Debug(fmt.Sprintf("Absolute path from pwd constructed: %s", absPath))
 
 	// get the directory entry
-	pDirEntries, err := utils.GetBranchDirEntriesFromRoot(pFs, *pFatsRef, *pDataRef, absPath)
+	pDirEntries, err := utils.GetBranchDirEntriesFromRoot(pFs, fatsRef, dataRef, absPath)
 	if err != nil {
 		return false, err
 	}
@@ -147,21 +163,21 @@ func changeDirCommand(pCommand *Command, pFs *pseudo_fat.FileSystem, pFatsRef *[
 }
 
 // mkdirCommand creates a new directory
-func mkdirCommand(pCommand *Command, pFs *pseudo_fat.FileSystem, pFatsRef *[][]int32, pDataRef *[]byte) (bool, error) {
+func mkdirCommand(pCommand *Command, pFs *pseudo_fat.FileSystem, fatsRef [][]int32, dataRef []byte) (bool, error) {
 	// sanity check
-	if pCommand == nil || pFs == nil || pFatsRef == nil || pDataRef == nil {
+	if pCommand == nil || pFs == nil || fatsRef == nil || dataRef == nil {
 		return false, custom_errors.ErrNilPointer
 	}
 	if P_CurrDir == nil {
 		return false, custom_errors.ErrFSUninitialized
 	}
 
-	absNormPath, err := makePathNormAbs(pCommand.Args[0], pFs, pFatsRef, pDataRef)
+	absNormPath, err := makePathNormAbs(pCommand.Args[0], pFs, fatsRef, dataRef)
 	if err != nil {
 		return false, err
 	}
 
-	err = utils.Mkdir(pFs, *pFatsRef, *pDataRef, absNormPath)
+	err = utils.Mkdir(pFs, fatsRef, dataRef, absNormPath)
 	if err != nil {
 		return false, err
 	}
@@ -170,9 +186,9 @@ func mkdirCommand(pCommand *Command, pFs *pseudo_fat.FileSystem, pFatsRef *[][]i
 }
 
 // rmdirCommand tries to remove the directory.
-func rmdirCommand(pCommand *Command, pFs *pseudo_fat.FileSystem, pFatsRef *[][]int32, pDataRef *[]byte) (bool, error) {
+func rmdirCommand(pCommand *Command, pFs *pseudo_fat.FileSystem, fatsRef [][]int32, dataRef []byte) (bool, error) {
 	// sanity check
-	if pCommand == nil || pFs == nil || pFatsRef == nil || pDataRef == nil {
+	if pCommand == nil || pFs == nil || fatsRef == nil || dataRef == nil {
 		return false, custom_errors.ErrNilPointer
 	}
 	if P_CurrDir == nil {
@@ -185,12 +201,12 @@ func rmdirCommand(pCommand *Command, pFs *pseudo_fat.FileSystem, pFatsRef *[][]i
 		return false, custom_errors.ErrInvalidDirName
 	}
 
-	absPath, err := makePathNormAbs(pCommand.Args[0], pFs, pFatsRef, pDataRef)
+	absPath, err := makePathNormAbs(pCommand.Args[0], pFs, fatsRef, dataRef)
 	if err != nil {
 		return false, err
 	}
 
-	err = utils.Rmdir(pFs, *pFatsRef, *pDataRef, absPath)
+	err = utils.Rmdir(pFs, fatsRef, dataRef, P_CurrDir, absPath)
 	if err != nil {
 		switch err {
 		case custom_errors.ErrDirNotFound:
@@ -205,6 +221,46 @@ func rmdirCommand(pCommand *Command, pFs *pseudo_fat.FileSystem, pFatsRef *[][]i
 	}
 
 	return true, nil
+}
+
+// listCommand lists the directory entries for a specified path.
+func listCommand(pCommand *Command, pFs *pseudo_fat.FileSystem, fatsRef [][]int32, dataRef []byte) ([]*pseudo_fat.DirectoryEntry, error) {
+	// sanity check
+	if pCommand == nil || pFs == nil {
+		return nil, custom_errors.ErrNilPointer
+	}
+	if P_CurrDir == nil {
+		return nil, custom_errors.ErrFSUninitialized
+	}
+
+	var desiredPath string
+	if len(pCommand.Args) == 0 {
+		desiredPath = consts.CurrDirSymbol
+	} else {
+		desiredPath = pCommand.Args[0]
+	}
+
+	normAbsPath, err := makePathNormAbs(desiredPath, pFs, fatsRef, dataRef)
+	if err != nil {
+		return nil, err
+	}
+
+	// get the directory entries
+	branchDirEntries, err := utils.GetBranchDirEntriesFromRoot(pFs, fatsRef, dataRef, normAbsPath)
+	if err != nil {
+		return nil, err
+	}
+
+	// get the target directory
+	targetDir := branchDirEntries[len(branchDirEntries)-1]
+
+	// get the directory entries
+	dirEntries, err := utils.GetDirEntries(pFs, targetDir, fatsRef, dataRef)
+	if err != nil {
+		return nil, err
+	}
+
+	return dirEntries, nil
 }
 
 // handleUninitializedFSCmd handles the command when the filesystem is not initialized.
@@ -296,21 +352,33 @@ func handleInitializedFSCmd(pFs *pseudo_fat.FileSystem,
 		}
 
 	case consts.ChangeDirCommand:
-		fsChanged, err = changeDirCommand(pCommand, pFs, pFatsRef, pDataRef)
+		fsChanged, err = changeDirCommand(pCommand, pFs, *pFatsRef, *pDataRef)
 		if err != nil {
 			return fsChanged, err
 		}
 
 	case consts.MakeDirCommand:
-		fsChanged, err = mkdirCommand(pCommand, pFs, pFatsRef, pDataRef)
+		fsChanged, err = mkdirCommand(pCommand, pFs, *pFatsRef, *pDataRef)
 		if err != nil {
 			return fsChanged, err
 		}
 
 	case consts.RemoveDirCommand:
-		fsChanged, err = rmdirCommand(pCommand, pFs, pFatsRef, pDataRef)
+		fsChanged, err = rmdirCommand(pCommand, pFs, *pFatsRef, *pDataRef)
 		if err != nil {
 			return fsChanged, err
+		}
+
+	case consts.ListCommand:
+		var entries []*pseudo_fat.DirectoryEntry
+		entries, err = listCommand(pCommand, pFs, *pFatsRef, *pDataRef)
+		if err != nil {
+			return fsChanged, err
+		} else {
+			sortDirectoryEntries(entries)
+			for _, entry := range entries {
+				fmt.Println(entry.ToStringLS())
+			}
 		}
 
 	case consts.DebugCommand:

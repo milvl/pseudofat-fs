@@ -86,3 +86,12 @@ func (d *DirectoryEntry) ToString() string {
 		", ParentCluster: " + fmt.Sprint(d.ParentCluster) +
 		"}"
 }
+
+// ToStringLS returns a string representation of the directory entry for the ls command
+func (d *DirectoryEntry) ToStringLS() string {
+	if d.IsFile {
+		return fmt.Sprintf("FILE:\t%s\t%d", string(d.Name[:]), d.Size)
+	} else {
+		return fmt.Sprintf("DIR:\t%s", string(d.Name[:]))
+	}
+}
