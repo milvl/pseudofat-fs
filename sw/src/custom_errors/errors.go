@@ -98,8 +98,8 @@ var ErrInvalidPath = errors.New("invalid path")
 // ErrDirNotEmpty is an error for directory not empty
 var ErrDirNotEmpty = errors.New("directory not empty")
 
-// ErrInvalidDirName is an error for invalid directory name
-var ErrInvalidDirName = errors.New("invalid directory name")
+// ErrInvalidDirEntryName is an error for invalid directory entry name
+var ErrInvalidDirEntryName = errors.New("invalid directory entry name")
 
 // ErrInvalidFileName is an error for invalid file name
 var ErrDirAlreadyExists = errors.New("directory already exists")
@@ -109,3 +109,9 @@ var ErrEntryExists = errors.New("entry already exists")
 
 // ErrDirInUse is an error for directory in use
 var ErrDirInUse = errors.New("directory is currently in use (try changing current directory)")
+
+// ErrInFileNotFound is an error for input file not found
+var ErrInFileNotFound = errors.New("input file not found")
+
+// ErrEntryNotFound is an error for entry not found
+var ErrEntryNotFound = errors.New("entry not found")

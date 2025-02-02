@@ -7,6 +7,7 @@ import (
 	"kiv-zos-semestral-work/custom_errors"
 	"kiv-zos-semestral-work/logging"
 	"kiv-zos-semestral-work/pseudo_fat"
+	"math"
 	"strings"
 )
 
@@ -57,9 +58,10 @@ func readDirectoryEntryFromCluster(clusterData []byte) (*pseudo_fat.DirectoryEnt
 		return nil, fmt.Errorf("failed to deserialize directory entry: %w", err)
 	}
 
-	if entry.IsFile {
-		return nil, fmt.Errorf("entry is a file, not a directory")
-	}
+	// TODO delete if not needed
+	// if entry.IsFile {
+	// 	return nil, fmt.Errorf("entry is a file, not a directory")
+	// }
 
 	return &entry, nil
 }
@@ -73,6 +75,28 @@ func findFreeCluster(fat []int32) (uint32, error) {
 	}
 
 	return 0, custom_errors.ErrNoFreeCluster
+}
+
+// findFreeClustersForFile tries to find enough free clusters for the file.
+func findFreeClustersForFile(bytesNeeded int, fat []int32) ([]uint32, error) {
+	clustersNeeded := int(math.Ceil(float64(bytesNeeded) / float64(consts.ClusterSize)))
+
+	freeClusters := make([]uint32, 0, clustersNeeded)
+	for i, entry := range fat {
+		if entry == consts.FatFree {
+			freeClusters = append(freeClusters, uint32(i))
+		}
+
+		if len(freeClusters) == clustersNeeded {
+			break
+		}
+	}
+
+	if len(freeClusters) < clustersNeeded {
+		return nil, custom_errors.ErrNoFreeCluster
+	}
+
+	return freeClusters, nil
 }
 
 // GetRootDirEntry retrieves the root directory entry.
@@ -219,7 +243,7 @@ func GetBranchDirEntriesFromRoot(pFs *pseudo_fat.FileSystem, fats [][]int32, dat
 	// traverse each directory in the path
 	pCurrDirEntry := pRootDirEntry
 	resEntries = append(resEntries, pCurrDirEntry)
-	for _, dirName := range nodes {
+	for i, dirName := range nodes {
 		entries, err := GetDirEntries(pFs, pCurrDirEntry, fats, data)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get directory entries: %w", err)
@@ -227,7 +251,10 @@ func GetBranchDirEntriesFromRoot(pFs *pseudo_fat.FileSystem, fats [][]int32, dat
 
 		nodeFound := false
 		for _, pEntry := range entries {
-			if !pEntry.IsFile && getNormalizedStrFromMem(pEntry.Name[:]) == dirName {
+			if getNormalizedStrFromMem(pEntry.Name[:]) == dirName {
+				if i < len(nodes)-1 && pEntry.IsFile {
+					continue
+				}
 				logging.Debug(fmt.Sprintf("Found node: \"%s\" on path: \"%s\"", dirName, absPath))
 				pCurrDirEntry = pEntry
 				nodeFound = true
@@ -237,7 +264,7 @@ func GetBranchDirEntriesFromRoot(pFs *pseudo_fat.FileSystem, fats [][]int32, dat
 		}
 
 		if !nodeFound {
-			return nil, custom_errors.ErrDirNotFound
+			return nil, custom_errors.ErrEntryNotFound
 		}
 	}
 
@@ -259,7 +286,7 @@ func entryExists(pFs *pseudo_fat.FileSystem, fats [][]int32, data []byte, normAb
 	// try to get the directory entry
 	_, err := GetBranchDirEntriesFromRoot(pFs, fats, data, normAbsPath)
 	if err != nil {
-		if err == custom_errors.ErrDirNotFound {
+		if err == custom_errors.ErrEntryNotFound {
 			return false, nil
 		}
 		return false, err
@@ -313,9 +340,17 @@ func Mkdir(pFs *pseudo_fat.FileSystem, fats [][]int32, data []byte, absNormPathT
 		return custom_errors.ErrNilPointer
 	}
 
+	logging.Debug(fmt.Sprintf("Creating directory: \"%s\"", absNormPathToDir))
+
 	pathSegments := GetPathSegments(absNormPathToDir)
 	targetDirName := pathSegments[len(pathSegments)-1]
-	ancestorBranchPath := strings.Join(pathSegments[:len(pathSegments)-1], consts.PathDelimiter)
+
+	// if the taget is root
+	if targetDirName == consts.PathDelimiter {
+		return custom_errors.ErrInvalidPath
+	}
+
+	ancestorBranchPath := pathSegments[0] + strings.Join(pathSegments[1:len(pathSegments)-1], consts.PathDelimiter)
 
 	// sanity check for invalid ancestor path
 	ancestorEntriesRef, err := GetBranchDirEntriesFromRoot(pFs, fats, data, ancestorBranchPath)
@@ -473,6 +508,8 @@ func Rmdir(pFs *pseudo_fat.FileSystem, fats [][]int32, data []byte, p_pwd *pseud
 		return custom_errors.ErrNilPointer
 	}
 
+	logging.Debug(fmt.Sprintf("Removing directory: \"%s\"", absNormPathToDir))
+
 	pathSegments := GetPathSegments(absNormPathToDir)
 
 	// if the taget is root
@@ -522,4 +559,148 @@ func Rmdir(pFs *pseudo_fat.FileSystem, fats [][]int32, data []byte, p_pwd *pseud
 	copy(data[bytesOffset:], make([]byte, int(pFs.ClusterSize)))
 
 	return nil
+}
+
+// CopyInsideFS copies a file to a new location in the filesystem.
+func CopyInsideFS(pFs *pseudo_fat.FileSystem, fatsRef [][]int32, dataRef []byte, absNormDestPath string, fileDataRef []byte) error {
+	// sanity checks
+	if pFs == nil || fatsRef == nil || dataRef == nil || absNormDestPath == "" || fileDataRef == nil {
+		return custom_errors.ErrNilPointer
+	}
+
+	logging.Debug(fmt.Sprintf("Copying file \"%s\" to \"%s\"", absNormDestPath, absNormDestPath))
+
+	// check if the destination path already exists
+	exists, err := entryExists(pFs, fatsRef, dataRef, absNormDestPath)
+	if err != nil {
+		return err
+	}
+	if exists {
+		return custom_errors.ErrEntryExists
+	}
+
+	pathSegments := GetPathSegments(absNormDestPath)
+	fileName := pathSegments[len(pathSegments)-1]
+
+	// if the taget is root
+	if len(pathSegments) == 0 {
+		return custom_errors.ErrInvalidPath
+	}
+
+	// get the branch for the parent directory
+	ancestorBranchPath := strings.Join(pathSegments[:len(pathSegments)-1], consts.PathDelimiter)
+	ancestorEntriesRef, err := GetBranchDirEntriesFromRoot(pFs, fatsRef, dataRef, ancestorBranchPath)
+	if err != nil {
+		return err
+	}
+
+	// all entries should be directories
+	for _, pEntry := range ancestorEntriesRef {
+		if pEntry.IsFile {
+			logging.Warn(fmt.Sprintf("Target entry \"%s\" is a file, not a directory", getNormalizedStrFromMem(pEntry.Name[:])))
+			return custom_errors.ErrInvalidPath
+		}
+	}
+
+	referencedFat := fatsRef[0]
+
+	// get the parent directory entry
+	pParentDirEntry := ancestorEntriesRef[len(ancestorEntriesRef)-1]
+
+	// figure out if the file will fit into the filesystem
+	finalBytesNeeded := len(fileDataRef) + int(pFs.ClusterSize) + int(pFs.ClusterSize) // file data + 2 directory entries
+	clustersReady, err := findFreeClustersForFile(finalBytesNeeded, referencedFat)
+	if err != nil {
+		return err
+	}
+
+	// get the cluster chain for the parent directory
+	clusterChain, err := getClusterChain(pParentDirEntry.StartCluster, referencedFat)
+	if err != nil {
+		return fmt.Errorf("failed to get cluster chain: %w", err)
+	}
+	clusterEndIndex := clusterChain[len(clusterChain)-1]
+
+	// find a free cluster for the parent directory new entry
+	freeClusterIndexParent := clustersReady[0]
+	freeClusterIndex := clustersReady[1]
+	freeClusterIndicesData := clustersReady[2:]
+
+	// prepare the new directory entry
+	pNewDirEntry := NewDirectoryEntry(true, uint32(len(fileDataRef)), freeClusterIndex, pParentDirEntry.StartCluster, fileName)
+	newDirEntryBytes, err := StructToBytes(pNewDirEntry)
+	if err != nil {
+		return fmt.Errorf("failed to serialize directory entry: %w", err)
+	}
+
+	// write the new directory entry to the parent directory cluster
+	addToFat(fatsRef, clusterEndIndex, freeClusterIndexParent)
+	byteOffset := int(freeClusterIndexParent) * int(pFs.ClusterSize)
+	copy(dataRef[byteOffset:], newDirEntryBytes)
+
+	// write the new directory entry to the its own cluster
+	markEndOfChain(fatsRef, freeClusterIndex)
+	byteOffset = int(freeClusterIndex) * int(pFs.ClusterSize)
+	copy(dataRef[byteOffset:], newDirEntryBytes)
+
+	// write the file data to the filesystem
+	prevIndex := freeClusterIndex
+	for i, clusterIndex := range freeClusterIndicesData {
+		addToFat(fatsRef, prevIndex, clusterIndex)
+		byteOffset = int(clusterIndex) * int(pFs.ClusterSize)
+		copy(dataRef[byteOffset:], fileDataRef[i*int(pFs.ClusterSize):])
+		prevIndex = clusterIndex
+	}
+
+	return nil
+}
+
+// GetFileBytes retrieves the content of the specified file.
+func GetFileBytes(pFs *pseudo_fat.FileSystem, fatsRef [][]int32, dataRef []byte, absNormSrcPath string) ([]byte, error) {
+	// sanity checks
+	if pFs == nil || fatsRef == nil || dataRef == nil || absNormSrcPath == "" {
+		return nil, custom_errors.ErrNilPointer
+	}
+
+	logging.Debug(fmt.Sprintf("Returning content of file \"%s\"", absNormSrcPath))
+
+	// get the branch for the source file (returns error if the file does not exist)
+	fileEntriesRef, err := GetBranchDirEntriesFromRoot(pFs, fatsRef, dataRef, absNormSrcPath)
+	if err != nil {
+		return nil, err
+	}
+
+	// get the last entry in the branch
+	pEntry := fileEntriesRef[len(fileEntriesRef)-1]
+	if !pEntry.IsFile {
+		return nil, custom_errors.ErrIsDir
+	}
+
+	referecedFat := fatsRef[0]
+
+	// get the cluster chain for the file
+	clusterChain, err := getClusterChain(pEntry.StartCluster, referecedFat)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get cluster chain: %w", err)
+	}
+
+	onlyDataChain := clusterChain[1:] // skip the first cluster (directory entry)
+
+	// read the file data
+	fileData := make([]byte, 0, int(pEntry.Size))
+	remainingSize := int(pEntry.Size)
+	for _, clusterIndex := range onlyDataChain {
+		byteOffset := int(clusterIndex) * int(pFs.ClusterSize)
+		var endOffset int
+		if remainingSize > int(pFs.ClusterSize) {
+			endOffset = byteOffset + int(pFs.ClusterSize)
+			remainingSize -= int(pFs.ClusterSize)
+		} else {
+			endOffset = byteOffset + remainingSize
+		}
+		clusterData := dataRef[byteOffset:endOffset]
+		fileData = append(fileData, clusterData...)
+	}
+
+	return fileData, nil
 }

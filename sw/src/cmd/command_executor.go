@@ -49,6 +49,7 @@ func formatCommand(pCommand *Command, pFs *pseudo_fat.FileSystem, pFatsRef *[][]
 	logging.Debug(fmt.Sprintf("To format filesystem to %d bytes", size))
 	logging.Debug(fmt.Sprintf("Cluster count: %d", clusterCount))
 	logging.Debug(fmt.Sprintf("FAT space: %d", fatSize))
+	logging.Debug(fmt.Sprintf("FAT tables count: %d", consts.FATableCount))
 	logging.Debug(fmt.Sprintf("Allocatable space: %d", allocatableSize))
 
 	// allocate the pFatsRef
@@ -104,7 +105,12 @@ func makePathNormAbs(path string, pFs *pseudo_fat.FileSystem, fatsRef [][]int32,
 
 	// path is absolute
 	if strings.HasPrefix(path, consts.PathDelimiter) {
-		res = path
+		absPathNodes, err := utils.GetNormalizedPathNodes(path)
+		if err != nil {
+			return "", err
+		}
+
+		res = consts.PathDelimiter + strings.Join(absPathNodes, consts.PathDelimiter)
 
 		// path is relative
 	} else {
@@ -198,7 +204,7 @@ func rmdirCommand(pCommand *Command, pFs *pseudo_fat.FileSystem, fatsRef [][]int
 	// check if the directory name is valid
 	dirName := utils.GetPathBasename(pCommand.Args[0])
 	if dirName == consts.CurrDirSymbol || dirName == consts.ParentDirSymbol || dirName == "" {
-		return false, custom_errors.ErrInvalidDirName
+		return false, custom_errors.ErrInvalidDirEntryName
 	}
 
 	absPath, err := makePathNormAbs(pCommand.Args[0], pFs, fatsRef, dataRef)
@@ -210,7 +216,7 @@ func rmdirCommand(pCommand *Command, pFs *pseudo_fat.FileSystem, fatsRef [][]int
 	if err != nil {
 		switch err {
 		case custom_errors.ErrDirNotFound:
-			fmt.Println(consts.FileNotFound)
+			fmt.Println(consts.DirNotFound)
 		case custom_errors.ErrDirNotEmpty:
 			fmt.Println(consts.NotEmpty)
 		default:
@@ -263,6 +269,80 @@ func listCommand(pCommand *Command, pFs *pseudo_fat.FileSystem, fatsRef [][]int3
 	return dirEntries, nil
 }
 
+// copyInsideFS copies a file to the filesystem.
+func copyInsideFS(pCommand *Command, pFs *pseudo_fat.FileSystem, fatsRef [][]int32, dataRef []byte) (bool, error) {
+	// sanity check
+	if pCommand == nil || pFs == nil || fatsRef == nil || dataRef == nil {
+		return false, custom_errors.ErrNilPointer
+	}
+	if P_CurrDir == nil {
+		return false, custom_errors.ErrFSUninitialized
+	}
+	if len(pCommand.Args) != 2 {
+		return false, custom_errors.ErrInvalArgsCount
+	}
+
+	// check if the input file exists
+	_, err := os.Stat(pCommand.Args[0])
+	if os.IsNotExist(err) {
+		return false, custom_errors.ErrInFileNotFound
+	} else if err != nil {
+		return false, err
+	}
+
+	// load the file
+	fileData, err := os.ReadFile(pCommand.Args[0])
+	if err != nil {
+		return false, err
+	}
+
+	// check if the file name is valid
+	baseName := utils.GetPathBasename(pCommand.Args[1])
+	if baseName == consts.CurrDirSymbol || baseName == consts.ParentDirSymbol || baseName == "" {
+		return false, custom_errors.ErrInvalidDirEntryName
+	}
+
+	absPath, err := makePathNormAbs(pCommand.Args[1], pFs, fatsRef, dataRef)
+	if err != nil {
+		return false, err
+	}
+
+	err = utils.CopyInsideFS(pFs, fatsRef, dataRef, absPath, fileData)
+	if err != nil {
+		return false, err
+	}
+
+	return true, nil
+}
+
+// concatCommand handles the concatenation command.
+func concatCommand(pCommand *Command, pFs *pseudo_fat.FileSystem, fatsRef [][]int32, dataRef []byte) ([]byte, error) {
+	// sanity check
+	if pFs == nil || fatsRef == nil || dataRef == nil || pCommand == nil {
+		return nil, custom_errors.ErrNilPointer
+	}
+	if P_CurrDir == nil {
+		return nil, custom_errors.ErrFSUninitialized
+	}
+	if len(pCommand.Args) != 1 {
+		return nil, custom_errors.ErrInvalArgsCount
+	}
+
+	// get the path
+	normAbsPath, err := makePathNormAbs(pCommand.Args[0], pFs, fatsRef, dataRef)
+	if err != nil {
+		return nil, err
+	}
+
+	// get the file data
+	fileData, err := utils.GetFileBytes(pFs, fatsRef, dataRef, normAbsPath)
+	if err != nil {
+		return nil, err
+	}
+
+	return fileData, nil
+}
+
 // handleUninitializedFSCmd handles the command when the filesystem is not initialized.
 func handleUninitializedFSCmd(pFs *pseudo_fat.FileSystem,
 	pFatsRef *[][]int32,
@@ -296,6 +376,7 @@ func handleUninitializedFSCmd(pFs *pseudo_fat.FileSystem,
 		consts.ListCommand,
 		consts.MakeDirCommand,
 		consts.RemoveDirCommand,
+		consts.RemoveCommand,
 		consts.ConcatCommand,
 		consts.InfoCommand,
 		consts.InterpretScriptCommand,
@@ -380,6 +461,40 @@ func handleInitializedFSCmd(pFs *pseudo_fat.FileSystem,
 				fmt.Println(entry.ToStringLS())
 			}
 		}
+
+	case consts.CopyInsideFSCommand:
+		fsChanged, err = copyInsideFS(pCommand, pFs, *pFatsRef, *pDataRef)
+		if err != nil {
+			return fsChanged, err
+		}
+
+	case consts.CopyOutsideFSCommand:
+		normAbsSrcPath, err := makePathNormAbs(pCommand.Args[0], pFs, *pFatsRef, *pDataRef)
+		if err != nil {
+			return fsChanged, err
+		}
+
+		var dataRef []byte
+		dataRef, err = utils.GetFileBytes(pFs, *pFatsRef, *pDataRef, normAbsSrcPath)
+		if err != nil {
+			return fsChanged, err
+		}
+
+		err = os.WriteFile(pCommand.Args[1], dataRef, consts.NewFilePermissions)
+		if err != nil {
+			return fsChanged, err
+		}
+
+		fmt.Println("FILE EXPORTED")
+
+	case consts.ConcatCommand:
+		var dataRef []byte
+		dataRef, err = concatCommand(pCommand, pFs, *pFatsRef, *pDataRef)
+		if err != nil {
+			return fsChanged, err
+		}
+
+		fmt.Println(string(dataRef))
 
 	case consts.DebugCommand:
 		dirEntries, err := utils.GetDirEntries(pFs, P_CurrDir, *pFatsRef, *pDataRef)

@@ -90,17 +90,36 @@ func CalculateFSSizes(size uint32) (uint32, uint32, uint32) {
 	var clusterCount uint32
 	dataSpace := size - fsStructSize - fatsSize
 
-	for {
+	sizeConverged := false
+	for i := 0; i < 1000; i++ {
 		clusterCount = dataSpace / uint32(consts.ClusterSize)
 
 		fatsSize = clusterCount * uint32(unsafe.Sizeof(uint32(0)))
 		newDataSpace := size - fsStructSize - fatsSize*uint32(consts.FATableCount)
 
 		if newDataSpace == dataSpace {
+			sizeConverged = true
 			break
 		}
 
 		dataSpace = newDataSpace
+	}
+
+	if !sizeConverged {
+		logging.Warn("The calculation of the file system did not converge. Switching to slower iterative method.")
+		dataSpace = size
+
+		for {
+			clusterCount = dataSpace / uint32(consts.ClusterSize)
+			fatsSize = clusterCount * uint32(unsafe.Sizeof(uint32(0)))
+
+			totalSize := fsStructSize + fatsSize*uint32(consts.FATableCount) + dataSpace
+			if totalSize > size {
+				dataSpace--
+			} else {
+				break
+			}
+		}
 	}
 
 	allocatableSpace := clusterCount * uint32(consts.ClusterSize)

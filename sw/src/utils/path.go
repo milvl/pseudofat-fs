@@ -81,7 +81,13 @@ func GetPathAndBasename(path string) (string, string) {
 func GetPathSegments(path string) []string {
 	segments := make([]string, 0)
 	segments = append(segments, consts.PathDelimiter)
-	segments = append(segments, strings.Split(path, consts.PathDelimiter)[1:]...)
+	split := strings.Split(path, consts.PathDelimiter)[1:]
+	for _, segment := range split {
+		if segment == "" {
+			continue
+		}
+		segments = append(segments, segment)
+	}
 
 	return segments
 }
