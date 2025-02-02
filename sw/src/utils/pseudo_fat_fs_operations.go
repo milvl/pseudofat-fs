@@ -244,6 +244,30 @@ func GetBranchDirEntriesFromRoot(pFs *pseudo_fat.FileSystem, fats [][]int32, dat
 	return resEntries, nil
 }
 
+// entryExists checks if the entry exists on the specified path.
+func entryExists(pFs *pseudo_fat.FileSystem, fats [][]int32, data []byte, normAbsPath string) (bool, error) {
+	// sanity checks
+	if pFs == nil || fats == nil || data == nil || normAbsPath == "" {
+		return false, custom_errors.ErrNilPointer
+	}
+
+	// edge case: root directory
+	if normAbsPath == consts.PathDelimiter || normAbsPath == consts.PathDelimiter+consts.CurrDirSymbol {
+		return true, nil
+	}
+
+	// try to get the directory entry
+	_, err := GetBranchDirEntriesFromRoot(pFs, fats, data, normAbsPath)
+	if err != nil {
+		if err == custom_errors.ErrDirNotFound {
+			return false, nil
+		}
+		return false, err
+	}
+
+	return true, nil
+}
+
 // addToFat adds a new cluster to the FAT chain.
 func addToFat(fats [][]int32, clusterIndex uint32, newClusterIndex uint32) {
 	for i := 0; i < len(fats); i++ {
@@ -270,11 +294,11 @@ func markFreeCluster(fats [][]int32, clusterIndex uint32) {
 	}
 }
 
-// connectClusters connects two clusters in the FAT chain.
-func connectClusters(fats [][]int32, clusterIndex uint32, nextClusterIndex uint32) {
+// inheritValOfCluster inherits the value of the target cluster to the specified cluster in the FAT.
+func inheritValOfCluster(fats [][]int32, receiverClusterIndex uint32, targetClusterIndex uint32) {
 	for i := 0; i < len(fats); i++ {
-		logging.Debug(fmt.Sprintf("Chain for FAT%d: %d -> from %d to %d", i, clusterIndex, fats[i][clusterIndex], nextClusterIndex))
-		fats[i][clusterIndex] = int32(nextClusterIndex)
+		logging.Debug(fmt.Sprintf("Chain for FAT%d: %d -> from %d to %d", i, receiverClusterIndex, fats[i][receiverClusterIndex], fats[i][targetClusterIndex]))
+		fats[i][receiverClusterIndex] = fats[i][targetClusterIndex]
 	}
 }
 
@@ -312,14 +336,12 @@ func Mkdir(pFs *pseudo_fat.FileSystem, fats [][]int32, data []byte, absNormPathT
 	pLastDir := ancestorEntriesRef[len(ancestorEntriesRef)-1]
 
 	// check if the target directory entry already exists
-	entries, err := GetDirEntries(pFs, pLastDir, fats, data)
+	exists, err := entryExists(pFs, fats, data, absNormPathToDir)
 	if err != nil {
-		return fmt.Errorf("failed to get directory entries: %w", err)
+		return err
 	}
-	for _, pEntry := range entries {
-		if getNormalizedStrFromMem(pEntry.Name[:]) == targetDirName {
-			return custom_errors.ErrEntryExists
-		}
+	if exists {
+		return custom_errors.ErrEntryExists
 	}
 
 	// get the cluster chain for the parent directory
@@ -365,7 +387,13 @@ func Mkdir(pFs *pseudo_fat.FileSystem, fats [][]int32, data []byte, absNormPathT
 }
 
 // removeParentTargetEntry removes the target entry from the parent directory entry chain.
-func removeParentTargetEntry(pFs *pseudo_fat.FileSystem, fats [][]int32, data []byte, pParentDirEntry *pseudo_fat.DirectoryEntry, pTargetDirEntry *pseudo_fat.DirectoryEntry) error {
+func removeParentTargetEntry(
+	pFs *pseudo_fat.FileSystem,
+	fats [][]int32,
+	data []byte,
+	pParentDirEntry *pseudo_fat.DirectoryEntry,
+	pTargetDirEntry *pseudo_fat.DirectoryEntry) error {
+
 	// sanity checks
 	if pFs == nil || fats == nil || data == nil || pParentDirEntry == nil || pTargetDirEntry == nil {
 		return custom_errors.ErrNilPointer
@@ -374,49 +402,60 @@ func removeParentTargetEntry(pFs *pseudo_fat.FileSystem, fats [][]int32, data []
 	fat := fats[0]
 
 	// get the cluster chain for the parent directory
-	clusterChain, err := getClusterChain(pParentDirEntry.StartCluster, fat)
+	parentClusterChain, err := getClusterChain(pParentDirEntry.StartCluster, fat)
 	if err != nil {
 		return fmt.Errorf("failed to get cluster chain: %w", err)
 	}
 
-	// find the index of entry in the parent directory entry chain and the index of its ancestor
-	var targetEntryIndex int = -1
-	var targetEntryAncestorIndex int = -1
-	for _, entryIndex := range clusterChain {
+	var prevClusterIndex int = -1
+	var nextClusterIndex int = -1
+	for i := 0; i < len(parentClusterChain); i++ {
+		currentClusterIndex := int(parentClusterChain[i])
+
 		// load the cluster data
-		byteOffset := int(entryIndex) * int(pFs.ClusterSize)
+		byteOffset := currentClusterIndex * int(pFs.ClusterSize)
 		clusterData := data[byteOffset : byteOffset+int(pFs.ClusterSize)]
 		pEntry, err := readDirectoryEntryFromCluster(clusterData)
 		if err != nil {
 			return fmt.Errorf("failed to read directory entry: %w", err)
 		}
 
-		if getNormalizedStrFromMem(pEntry.Name[:]) == getNormalizedStrFromMem(pTargetDirEntry.Name[:]) {
-			targetEntryIndex = int(entryIndex)
+		if i < len(parentClusterChain)-1 {
+			nextClusterIndex = int(parentClusterChain[i+1])
+		} else {
+			nextClusterIndex = -1
+		}
+
+		// found the target entry (with skipped self reference)
+		if pEntry.StartCluster != pTargetDirEntry.ParentCluster && getNormalizedStrFromMem(pEntry.Name[:]) == getNormalizedStrFromMem(pTargetDirEntry.Name[:]) {
+			// target is the only entry in the parent directory but ending index does not exist
+			if prevClusterIndex == -1 && nextClusterIndex == -1 {
+				return fmt.Errorf("the directory should not exist as parent directory is empty - logic error")
+
+				// target is the only entry in the parent directory
+			} else if prevClusterIndex == -1 {
+				return fmt.Errorf("the parent directory does not contain self reference - logic error")
+
+				// target is in the middle of the parent directory
+			} else if nextClusterIndex != -1 {
+				inheritValOfCluster(fats, uint32(prevClusterIndex), uint32(currentClusterIndex))
+				markFreeCluster(fats, uint32(currentClusterIndex))
+
+				// target is the last entry in the parent directory
+			} else {
+				markFreeCluster(fats, uint32(currentClusterIndex))
+				markEndOfChain(fats, uint32(prevClusterIndex))
+			}
+
+			// free the target parent directory entry
+			bytesOffset := currentClusterIndex * int(pFs.ClusterSize)
+			copy(data[bytesOffset:], make([]byte, int(pFs.ClusterSize)))
+
 			break
 		}
 
-		targetEntryAncestorIndex = int(entryIndex)
+		prevClusterIndex = currentClusterIndex
 	}
-
-	if targetEntryIndex == -1 {
-		return fmt.Errorf("target directory entry not found in the parent directory - logic error")
-	}
-
-	// target is last entry in the parent directory
-	if fat[targetEntryIndex] == consts.FatFileEnd {
-		// mark the parent directory entry as empty
-		markFreeCluster(fats, uint32(targetEntryIndex))
-		markEndOfChain(fats, uint32(targetEntryAncestorIndex))
-	} else {
-		// rewiring the FAT chain
-		connectClusters(fats, uint32(targetEntryAncestorIndex), uint32(fat[targetEntryIndex]))
-		markFreeCluster(fats, uint32(targetEntryIndex))
-	}
-
-	// free the target parent directory entry
-	bytesOffset := targetEntryIndex * int(pFs.ClusterSize)
-	copy(data[bytesOffset:], make([]byte, int(pFs.ClusterSize)))
 
 	return nil
 }
