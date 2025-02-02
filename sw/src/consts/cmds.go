@@ -11,8 +11,9 @@ const (
 	HelpCommand = "help"
 	// ExitCommand represents the format of the exit command
 	ExitCommand = "exit"
+	// CheckCommand represents the format of the check command
+	CheckCommand = "check"
 	// DebugCommand represents the format of the debug command. This command is used for debugging purposes.
-	// Remove this code for production
 	DebugCommand = "debug"
 
 	// TWO WORD COMMANDS //
@@ -31,10 +32,10 @@ const (
 	InfoCommand = "info"
 	// LoadInterpretScriptCommand represents the format of the load interpret script command
 	InterpretScriptCommand = "load"
-	// DefragCommand represents the format of the defrag command
-	DefragCommand = "defrag"
 	// FormatCommand represents the format of the format command
 	FormatCommand = "format"
+	// BugCommand represents the format of the bug command
+	BugCommand = "bug"
 
 	// THREE WORD COMMANDS //
 

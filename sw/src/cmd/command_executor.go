@@ -229,6 +229,42 @@ func rmdirCommand(pCommand *Command, pFs *pseudo_fat.FileSystem, fatsRef [][]int
 	return true, nil
 }
 
+// removeCommand removes a file from the filesystem.
+func removeCommand(pCommand *Command, pFs *pseudo_fat.FileSystem, fatsRef [][]int32, dataRef []byte) (bool, error) {
+	// sanity check
+	if pCommand == nil || pFs == nil || fatsRef == nil || dataRef == nil {
+		return false, custom_errors.ErrNilPointer
+	}
+	if P_CurrDir == nil {
+		return false, custom_errors.ErrFSUninitialized
+	}
+
+	// check if the file name is valid
+	fileName := utils.GetPathBasename(pCommand.Args[0])
+	if fileName == consts.CurrDirSymbol || fileName == consts.ParentDirSymbol || fileName == "" {
+		return false, custom_errors.ErrInvalidDirEntryName
+	}
+
+	normAbsPath, err := makePathNormAbs(pCommand.Args[0], pFs, fatsRef, dataRef)
+	if err != nil {
+		return false, err
+	}
+
+	err = utils.RemoveFile(pFs, fatsRef, dataRef, normAbsPath)
+	if err != nil {
+		switch err {
+		case custom_errors.ErrEntryNotFound:
+			fmt.Println(consts.FileNotFound)
+		default:
+			return false, fmt.Errorf("error removing file: %s", err)
+		}
+
+		return false, nil
+	}
+
+	return true, nil
+}
+
 // listCommand lists the directory entries for a specified path.
 func listCommand(pCommand *Command, pFs *pseudo_fat.FileSystem, fatsRef [][]int32, dataRef []byte) ([]*pseudo_fat.DirectoryEntry, error) {
 	// sanity check
@@ -380,7 +416,8 @@ func handleUninitializedFSCmd(pFs *pseudo_fat.FileSystem,
 		consts.ConcatCommand,
 		consts.InfoCommand,
 		consts.InterpretScriptCommand,
-		consts.DefragCommand,
+		consts.CheckCommand,
+		consts.BugCommand,
 		consts.CopyCommand,
 		consts.MoveCommand,
 		consts.CopyInsideFSCommand,
@@ -446,6 +483,12 @@ func handleInitializedFSCmd(pFs *pseudo_fat.FileSystem,
 
 	case consts.RemoveDirCommand:
 		fsChanged, err = rmdirCommand(pCommand, pFs, *pFatsRef, *pDataRef)
+		if err != nil {
+			return fsChanged, err
+		}
+
+	case consts.RemoveCommand:
+		fsChanged, err = removeCommand(pCommand, pFs, *pFatsRef, *pDataRef)
 		if err != nil {
 			return fsChanged, err
 		}

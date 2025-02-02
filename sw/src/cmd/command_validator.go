@@ -74,7 +74,7 @@ func getPathsCountForCommand(cmdName string) (int, error) {
 		consts.ChangeDirCommand,
 		consts.InfoCommand,
 		consts.InterpretScriptCommand,
-		consts.DefragCommand:
+		consts.BugCommand:
 		return 1, nil
 
 	case
@@ -161,6 +161,7 @@ func ValidateCommand(cmd *Command) error {
 		consts.CurrDirCommand,
 		consts.HelpCommand,
 		consts.ExitCommand,
+		consts.CheckCommand,
 		consts.DebugCommand:
 		return validateOneWordCommand(cmd)
 
@@ -173,11 +174,11 @@ func ValidateCommand(cmd *Command) error {
 		consts.ChangeDirCommand,
 		consts.InfoCommand,
 		consts.InterpretScriptCommand,
-		consts.DefragCommand,
 		consts.CopyCommand,
 		consts.MoveCommand,
 		consts.CopyInsideFSCommand,
-		consts.CopyOutsideFSCommand:
+		consts.CopyOutsideFSCommand,
+		consts.BugCommand:
 		return validateArgPathsCommand(cmd)
 
 	// edge cases

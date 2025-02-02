@@ -214,6 +214,8 @@ func GetAbsolutePathFromPwd(pFs *pseudo_fat.FileSystem, pDir *pseudo_fat.Directo
 
 // GetBranchDirEntriesFromRoot returns a slice of pointers to DirectoryEntry structs that represent the
 // directory entries on the specified path.
+//
+// Returns ErrEntryNotFound if some entry on the path does not exist.
 func GetBranchDirEntriesFromRoot(pFs *pseudo_fat.FileSystem, fats [][]int32, data []byte, absPath string) ([](*pseudo_fat.DirectoryEntry), error) {
 	// sanity checks
 	if pFs == nil || fats == nil || data == nil || absPath == "" {
@@ -252,6 +254,7 @@ func GetBranchDirEntriesFromRoot(pFs *pseudo_fat.FileSystem, fats [][]int32, dat
 		nodeFound := false
 		for _, pEntry := range entries {
 			if getNormalizedStrFromMem(pEntry.Name[:]) == dirName {
+				// skip potential file entries with same name as the last directory in the path (should still work correctly)
 				if i < len(nodes)-1 && pEntry.IsFile {
 					continue
 				}
@@ -557,6 +560,53 @@ func Rmdir(pFs *pseudo_fat.FileSystem, fats [][]int32, data []byte, p_pwd *pseud
 	markFreeCluster(fats, pTargetDirEntry.StartCluster)
 	bytesOffset := int(pTargetDirEntry.StartCluster) * int(pFs.ClusterSize)
 	copy(data[bytesOffset:], make([]byte, int(pFs.ClusterSize)))
+
+	return nil
+}
+
+// RemoveFile removes an existing file from the specified parent directory.
+// Expects the absNormPathToFile to be a valid normalized absolute path.
+func RemoveFile(pFs *pseudo_fat.FileSystem, fatsRef [][]int32, dataRef []byte, absNormPathToFile string) error {
+	// sanity checks
+	if pFs == nil || fatsRef == nil || dataRef == nil || absNormPathToFile == "" {
+		return custom_errors.ErrNilPointer
+	}
+
+	logging.Debug(fmt.Sprintf("Removing file: \"%s\"", absNormPathToFile))
+
+	// get the directory entry of the target file
+	pDirEntries, err := GetBranchDirEntriesFromRoot(pFs, fatsRef, dataRef, absNormPathToFile)
+	if err != nil {
+		return err
+	}
+
+	// get the last entry in the branch
+	pTargetFileEntry := pDirEntries[len(pDirEntries)-1]
+	if !pTargetFileEntry.IsFile {
+		return custom_errors.ErrIsDir
+	}
+
+	// get the parent directory entry
+	pParentDirEntry := pDirEntries[len(pDirEntries)-2]
+
+	// remove the target file entry
+	err = removeParentTargetEntry(pFs, fatsRef, dataRef, pParentDirEntry, pTargetFileEntry)
+	if err != nil {
+		return fmt.Errorf("failed to remove target entry from the parent directory: %w", err)
+	}
+
+	// get the cluster chain for the file (for freeing the clusters)
+	clusterChain, err := getClusterChain(pTargetFileEntry.StartCluster, fatsRef[0])
+	if err != nil {
+		return fmt.Errorf("failed to get cluster chain: %w", err)
+	}
+
+	// free the file clusters
+	for _, clusterIndex := range clusterChain {
+		markFreeCluster(fatsRef, clusterIndex)
+		bytesOffset := int(clusterIndex) * int(pFs.ClusterSize)
+		copy(dataRef[bytesOffset:], make([]byte, int(pFs.ClusterSize)))
+	}
 
 	return nil
 }
