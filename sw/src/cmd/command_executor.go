@@ -379,6 +379,47 @@ func concatCommand(pCommand *Command, pFs *pseudo_fat.FileSystem, fatsRef [][]in
 	return fileData, nil
 }
 
+// infoCommand handles the info command.
+func infoCommand(pCommand *Command, pFs *pseudo_fat.FileSystem, fatsRef [][]int32, dataRef []byte) ([]uint32, error) {
+	// sanity check
+	if pFs == nil || fatsRef == nil || dataRef == nil || pCommand == nil {
+		return nil, custom_errors.ErrNilPointer
+	}
+	if P_CurrDir == nil {
+		return nil, custom_errors.ErrFSUninitialized
+	}
+	if len(pCommand.Args) != 1 {
+		return nil, custom_errors.ErrInvalArgsCount
+	}
+
+	// get the path
+	normAbsPath, err := makePathNormAbs(pCommand.Args[0], pFs, fatsRef, dataRef)
+	if err != nil {
+		return nil, err
+	}
+
+	branchDirEntries, err := utils.GetBranchDirEntriesFromRoot(pFs, fatsRef, dataRef, normAbsPath)
+	if err != nil {
+		return nil, err
+	}
+
+	// get the target entry
+	targetEntry := branchDirEntries[len(branchDirEntries)-1]
+	if !targetEntry.IsFile {
+		return nil, custom_errors.ErrIsDir
+	}
+
+	referencedFat := fatsRef[0]
+
+	// get the cluster chain
+	clusters, err := utils.GetClusterChain(targetEntry.StartCluster, referencedFat)
+	if err != nil {
+		return nil, err
+	}
+
+	return clusters, nil
+}
+
 // handleUninitializedFSCmd handles the command when the filesystem is not initialized.
 func handleUninitializedFSCmd(pFs *pseudo_fat.FileSystem,
 	pFatsRef *[][]int32,
@@ -468,6 +509,7 @@ func handleInitializedFSCmd(pFs *pseudo_fat.FileSystem,
 			}
 			fmt.Println(pwd)
 		}
+		return fsChanged, err
 
 	case consts.ChangeDirCommand:
 		fsChanged, err = changeDirCommand(pCommand, pFs, *pFatsRef, *pDataRef)
@@ -504,6 +546,7 @@ func handleInitializedFSCmd(pFs *pseudo_fat.FileSystem,
 				fmt.Println(entry.ToStringLS())
 			}
 		}
+		return fsChanged, err
 
 	case consts.CopyInsideFSCommand:
 		fsChanged, err = copyInsideFS(pCommand, pFs, *pFatsRef, *pDataRef)
@@ -528,8 +571,6 @@ func handleInitializedFSCmd(pFs *pseudo_fat.FileSystem,
 			return fsChanged, err
 		}
 
-		fmt.Println("FILE EXPORTED")
-
 	case consts.ConcatCommand:
 		var dataRef []byte
 		dataRef, err = concatCommand(pCommand, pFs, *pFatsRef, *pDataRef)
@@ -538,6 +579,27 @@ func handleInitializedFSCmd(pFs *pseudo_fat.FileSystem,
 		}
 
 		fmt.Println(string(dataRef))
+		return fsChanged, err
+
+	case consts.InfoCommand:
+		var clusters []uint32
+		clusters, err = infoCommand(pCommand, pFs, *pFatsRef, *pDataRef)
+		if err != nil {
+			return fsChanged, err
+		}
+
+		filename := utils.GetPathBasename(pCommand.Args[0])
+
+		res := fmt.Sprintf("%s ", filename)
+		for i, cluster := range clusters {
+			if i == 0 {
+				res += fmt.Sprintf("%d", cluster)
+			} else {
+				res += fmt.Sprintf(",%d", cluster)
+			}
+		}
+
+		fmt.Println(res)
 
 	case consts.DebugCommand:
 		dirEntries, err := utils.GetDirEntries(pFs, P_CurrDir, *pFatsRef, *pDataRef)
@@ -565,6 +627,8 @@ func handleInitializedFSCmd(pFs *pseudo_fat.FileSystem,
 		logging.Debug(fmt.Sprintf("FATS: \n%s", utils.PFormatFats(*pFatsRef)))
 
 	}
+
+	fmt.Printf("%s\n", consts.CmdSuccessMsg)
 
 	return fsChanged, err
 }

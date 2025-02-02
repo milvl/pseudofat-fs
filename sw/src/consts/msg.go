@@ -68,3 +68,6 @@ const InFileNotFound = "INPUT FILE NOT FOUND"
 
 // NotEmpty is the message displayed when the directory is not empty
 const NotEmpty = "NOT EMPTY"
+
+// CmdSuccessMsg is the message displayed when the command is successful
+const CmdSuccessMsg = "OK"

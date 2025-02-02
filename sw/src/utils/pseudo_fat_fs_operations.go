@@ -11,8 +11,8 @@ import (
 	"strings"
 )
 
-// getClusterChain traverses the FAT to collect all clusters in the directory's chain.
-func getClusterChain(startCluster uint32, fat []int32) ([]uint32, error) {
+// GetClusterChain traverses the FAT to collect all clusters in the directory's chain.
+func GetClusterChain(startCluster uint32, fat []int32) ([]uint32, error) {
 	if int32(startCluster) == consts.FatFree {
 		return nil, custom_errors.ErrInvalStartCluster
 	}
@@ -134,7 +134,7 @@ func GetDirEntries(pFs *pseudo_fat.FileSystem, pDir *pseudo_fat.DirectoryEntry, 
 	fat := fats[0]
 
 	// get the cluster chain for the directory
-	clusterChain, err := getClusterChain(pDir.StartCluster, fat)
+	clusterChain, err := GetClusterChain(pDir.StartCluster, fat)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get cluster chain: %w", err)
 	}
@@ -383,7 +383,7 @@ func Mkdir(pFs *pseudo_fat.FileSystem, fats [][]int32, data []byte, absNormPathT
 	}
 
 	// get the cluster chain for the parent directory
-	clusterChain, err := getClusterChain(pLastDir.StartCluster, referencedFat)
+	clusterChain, err := GetClusterChain(pLastDir.StartCluster, referencedFat)
 	if err != nil {
 		return fmt.Errorf("failed to get cluster chain: %w", err)
 	}
@@ -440,7 +440,7 @@ func removeParentTargetEntry(
 	fat := fats[0]
 
 	// get the cluster chain for the parent directory
-	parentClusterChain, err := getClusterChain(pParentDirEntry.StartCluster, fat)
+	parentClusterChain, err := GetClusterChain(pParentDirEntry.StartCluster, fat)
 	if err != nil {
 		return fmt.Errorf("failed to get cluster chain: %w", err)
 	}
@@ -596,7 +596,7 @@ func RemoveFile(pFs *pseudo_fat.FileSystem, fatsRef [][]int32, dataRef []byte, a
 	}
 
 	// get the cluster chain for the file (for freeing the clusters)
-	clusterChain, err := getClusterChain(pTargetFileEntry.StartCluster, fatsRef[0])
+	clusterChain, err := GetClusterChain(pTargetFileEntry.StartCluster, fatsRef[0])
 	if err != nil {
 		return fmt.Errorf("failed to get cluster chain: %w", err)
 	}
@@ -665,7 +665,7 @@ func CopyInsideFS(pFs *pseudo_fat.FileSystem, fatsRef [][]int32, dataRef []byte,
 	}
 
 	// get the cluster chain for the parent directory
-	clusterChain, err := getClusterChain(pParentDirEntry.StartCluster, referencedFat)
+	clusterChain, err := GetClusterChain(pParentDirEntry.StartCluster, referencedFat)
 	if err != nil {
 		return fmt.Errorf("failed to get cluster chain: %w", err)
 	}
@@ -729,7 +729,7 @@ func GetFileBytes(pFs *pseudo_fat.FileSystem, fatsRef [][]int32, dataRef []byte,
 	referecedFat := fatsRef[0]
 
 	// get the cluster chain for the file
-	clusterChain, err := getClusterChain(pEntry.StartCluster, referecedFat)
+	clusterChain, err := GetClusterChain(pEntry.StartCluster, referecedFat)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get cluster chain: %w", err)
 	}
