@@ -420,6 +420,89 @@ func infoCommand(pCommand *Command, pFs *pseudo_fat.FileSystem, fatsRef [][]int3
 	return clusters, nil
 }
 
+// checkCommand checks the filesystem.
+func checkCommand(pFs *pseudo_fat.FileSystem, fatsRef [][]int32, dataRef []byte) {
+	// sanity check
+	if pFs == nil || fatsRef == nil || dataRef == nil {
+		fmt.Println("FILESYSTEM ERROR: FILESYSTEM IS NOT INITIALIZED")
+		return
+	}
+
+	// check for any broken FAT entries
+	noErrs := true
+	for i := 0; i < len(fatsRef); i++ {
+		for j := 0; j < len(fatsRef[i]); j++ {
+			if fatsRef[i][j] == consts.FatBadCluster {
+				if noErrs {
+					fmt.Println("FILESYSTEM CORRUPTED:")
+					noErrs = false
+				}
+
+				fmt.Printf("BAD CLUSTER AT: FAT%d[%d]", i, j)
+			}
+		}
+	}
+
+	// walk the filesystem and check for any inconsistencies
+	queue := make([]*pseudo_fat.DirectoryEntry, 0)
+	pRootDir, err := utils.GetRootDirEntry(pFs, fatsRef, dataRef)
+	if err != nil {
+		fmt.Println("FILESYSTEM CORRUPTED WITH ERROR: ", err)
+	}
+
+	queue = append(queue, pRootDir)
+	for len(queue) > 0 {
+		pCurrEntry := queue[0]
+		queue = queue[1:]
+
+		if pCurrEntry.IsFile {
+			// check the cluster chain
+			_, err = utils.GetClusterChain(pCurrEntry.StartCluster, fatsRef[0])
+			if err != nil {
+				fmt.Printf("FILESYSTEM ENTRY \"%s\" CORRUPTED WITH ERROR: %s\n", utils.GetNormalizedStrFromMem(pCurrEntry.Name[:]), err)
+				noErrs = false
+			}
+
+			// attempt to read the self reference entry
+			_, err = utils.ReadDirectoryEntryFromCluster(dataRef[pCurrEntry.StartCluster*uint32(pFs.ClusterSize) : (pCurrEntry.StartCluster+1)*uint32(pFs.ClusterSize)])
+			if err != nil {
+				fmt.Printf("FILESYSTEM ENTRY \"%s\" CORRUPTED WITH ERROR: %s\n", utils.GetNormalizedStrFromMem(pCurrEntry.Name[:]), err)
+				noErrs = false
+			}
+
+		} else {
+			// attempt to read the self reference entry if the entry is not root
+			if utils.GetNormalizedStrFromMem(pCurrEntry.Name[:]) != consts.PathDelimiter {
+				_, err = utils.ReadDirectoryEntryFromCluster(dataRef[pCurrEntry.StartCluster*uint32(pFs.ClusterSize) : (pCurrEntry.StartCluster+1)*uint32(pFs.ClusterSize)])
+				if err != nil {
+					fmt.Printf("FILESYSTEM ENTRY \"%s\" CORRUPTED WITH ERROR: %s\n", utils.GetNormalizedStrFromMem(pCurrEntry.Name[:]), err)
+					noErrs = false
+				}
+			}
+
+			// add the children to the queue
+			children, err := utils.GetDirEntries(pFs, pCurrEntry, fatsRef, dataRef)
+			if err != nil {
+				fmt.Printf("FILESYSTEM ENTRY \"%s\" CORRUPTED WITH ERROR: %s\n", utils.GetNormalizedStrFromMem(pCurrEntry.Name[:]), err)
+				noErrs = false
+			}
+
+			if len(children) > 0 {
+				// if the entry is root, do not ommit the first entry (self reference not returned for root)
+				if utils.GetNormalizedStrFromMem(pCurrEntry.Name[:]) == consts.PathDelimiter {
+					queue = append(queue, children...)
+				} else {
+					queue = append(queue, children[1:]...)
+				}
+			}
+		}
+	}
+
+	if noErrs {
+		fmt.Println(consts.CmdSuccessMsg)
+	}
+}
+
 // handleUninitializedFSCmd handles the command when the filesystem is not initialized.
 func handleUninitializedFSCmd(pFs *pseudo_fat.FileSystem,
 	pFatsRef *[][]int32,
@@ -601,29 +684,11 @@ func handleInitializedFSCmd(pFs *pseudo_fat.FileSystem,
 
 		fmt.Println(res)
 
+	case consts.CheckCommand:
+		checkCommand(pFs, *pFatsRef, *pDataRef)
+		return fsChanged, err
+
 	case consts.DebugCommand:
-		dirEntries, err := utils.GetDirEntries(pFs, P_CurrDir, *pFatsRef, *pDataRef)
-		if err != nil {
-			logging.Error(fmt.Sprintf("Error getting the directory entries: %s", err))
-			os.Exit(consts.ExitFailure)
-		}
-
-		logging.Debug(fmt.Sprintf("Directory entries count: %d", len(dirEntries)))
-		for i, entry := range dirEntries {
-			logging.Debug(fmt.Sprintf("Entry %d: %s", i, entry.ToString()))
-		}
-
-		logging.Debug("debug pwd: ")
-		if P_CurrDir == nil {
-			logging.Debug(fmt.Sprintf("Current directory: %s", consts.FSUninitializedMsg))
-		} else {
-			pwd, err := utils.GetAbsolutePathFromPwd(pFs, P_CurrDir, *pFatsRef, *pDataRef)
-			if err != nil {
-				return fsChanged, err
-			}
-			logging.Debug(fmt.Sprintf("Current directory: %s", pwd))
-		}
-
 		logging.Debug(fmt.Sprintf("FATS: \n%s", utils.PFormatFats(*pFatsRef)))
 
 	}
