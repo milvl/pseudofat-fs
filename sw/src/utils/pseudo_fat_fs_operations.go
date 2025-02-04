@@ -18,6 +18,7 @@ func GetClusterChain(startCluster uint32, fat []int32) ([]uint32, error) {
 	}
 
 	var chain []uint32
+	cycleMap := make(map[uint32]bool)
 	current := startCluster
 
 	for {
@@ -27,14 +28,19 @@ func GetClusterChain(startCluster uint32, fat []int32) ([]uint32, error) {
 		}
 
 		chain = append(chain, current)
+		cycleMap[current] = true
 
 		next := fat[current]
+		_, exists := cycleMap[uint32(next)]
+		if exists {
+			return nil, fmt.Errorf("CYCLE DETECTED AT CLUSTER %d", current)
+		}
 
 		if next == consts.FatFileEnd {
 			break
-		}
-
-		if next < 0 {
+		} else if next == consts.FatBadCluster {
+			return nil, custom_errors.ErrBadCluster
+		} else if next < 0 {
 			// negative values (other than consts.FatFileEnd) can be considered invalid or used for other purposes
 			return nil, fmt.Errorf("invalid FAT entry at cluster %d: %d", current, next)
 		}
@@ -122,6 +128,9 @@ func GetRootDirEntry(pFs *pseudo_fat.FileSystem, fats [][]int32, data []byte) (*
 }
 
 // GetDirEntries returns a slice of pointers to DirectoryEntry structs that belong to the specified directory.
+//
+// NOTE: It returns the directory entries of that are from the parent's cluster chain.
+// NOTE: It ommits the self reference entry.
 func GetDirEntries(pFs *pseudo_fat.FileSystem, pDir *pseudo_fat.DirectoryEntry, fats [][]int32, data []byte) ([](*pseudo_fat.DirectoryEntry), error) {
 	// sanity checks
 	if pFs == nil || pDir == nil || fats == nil || data == nil {
@@ -132,6 +141,8 @@ func GetDirEntries(pFs *pseudo_fat.FileSystem, pDir *pseudo_fat.DirectoryEntry, 
 	}
 
 	fat := fats[0]
+
+	logging.Debug(fmt.Sprintf("Getting directory entries for directory: \"%s\"", GetNormalizedStrFromMem(pDir.Name[:])))
 
 	// get the cluster chain for the directory
 	clusterChain, err := GetClusterChain(pDir.StartCluster, fat)
@@ -168,7 +179,6 @@ func GetDirEntries(pFs *pseudo_fat.FileSystem, pDir *pseudo_fat.DirectoryEntry, 
 }
 
 // GetAbsolutePathFromPwd retrieves the absolute path of the specified directory.
-// TODO: check if this really works
 func GetAbsolutePathFromPwd(pFs *pseudo_fat.FileSystem, pDir *pseudo_fat.DirectoryEntry, fats [][]int32, data []byte) (string, error) {
 	// sanity checks
 	if pFs == nil || pDir == nil || fats == nil || data == nil {

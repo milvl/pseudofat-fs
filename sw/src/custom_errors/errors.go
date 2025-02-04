@@ -115,3 +115,6 @@ var ErrInFileNotFound = errors.New("input file not found")
 
 // ErrEntryNotFound is an error for entry not found
 var ErrEntryNotFound = errors.New("entry not found")
+
+// ErrBadCluster is an error for bad cluster
+var ErrBadCluster = errors.New("bad cluster")

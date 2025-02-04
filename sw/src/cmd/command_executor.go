@@ -9,9 +9,12 @@ import (
 	"kiv-zos-semestral-work/logging"
 	"kiv-zos-semestral-work/pseudo_fat"
 	"kiv-zos-semestral-work/utils"
+	"math"
+	"math/rand"
 	"os"
 	"sort"
 	"strings"
+	"unsafe"
 )
 
 // P_CurrDir is a global variable that holds the current directory
@@ -453,29 +456,55 @@ func checkCommand(pFs *pseudo_fat.FileSystem, fatsRef [][]int32, dataRef []byte)
 	queue = append(queue, pRootDir)
 	for len(queue) > 0 {
 		pCurrEntry := queue[0]
+		var pCurrEntryFromData *pseudo_fat.DirectoryEntry
 		queue = queue[1:]
 
 		if pCurrEntry.IsFile {
 			// check the cluster chain
-			_, err = utils.GetClusterChain(pCurrEntry.StartCluster, fatsRef[0])
+			pCurrEntryFromData, err = utils.ReadDirectoryEntryFromCluster(dataRef[pCurrEntry.StartCluster*uint32(pFs.ClusterSize) : (pCurrEntry.StartCluster+1)*uint32(pFs.ClusterSize)])
 			if err != nil {
 				fmt.Printf("FILESYSTEM ENTRY \"%s\" CORRUPTED WITH ERROR: %s\n", utils.GetNormalizedStrFromMem(pCurrEntry.Name[:]), err)
 				noErrs = false
 			}
 
-			// attempt to read the self reference entry
-			_, err = utils.ReadDirectoryEntryFromCluster(dataRef[pCurrEntry.StartCluster*uint32(pFs.ClusterSize) : (pCurrEntry.StartCluster+1)*uint32(pFs.ClusterSize)])
-			if err != nil {
-				fmt.Printf("FILESYSTEM ENTRY \"%s\" CORRUPTED WITH ERROR: %s\n", utils.GetNormalizedStrFromMem(pCurrEntry.Name[:]), err)
+			if utils.GetNormalizedStrFromMem(pCurrEntry.Name[:]) != utils.GetNormalizedStrFromMem(pCurrEntryFromData.Name[:]) ||
+				pCurrEntry.IsFile != pCurrEntryFromData.IsFile ||
+				pCurrEntry.StartCluster != pCurrEntryFromData.StartCluster ||
+				pCurrEntry.ParentCluster != pCurrEntryFromData.ParentCluster ||
+				pCurrEntry.Size != pCurrEntryFromData.Size {
+				fmt.Printf("FILESYSTEM ENTRY \"%s\" CORRUPTED: METADATA MISSMATCH COMPARED TO PARENT REFERENCE\n", utils.GetNormalizedStrFromMem(pCurrEntry.Name[:]))
 				noErrs = false
+			}
+
+			// check the fat chains
+			for i := 0; i < len(fatsRef); i++ {
+				clusterChain, err := utils.GetClusterChain(pCurrEntry.StartCluster, fatsRef[i])
+				if err != nil {
+					fmt.Printf("FILESYSTEM ENTRY \"%s\" CORRUPTED WHILE READING FAT%d: %s\n", utils.GetNormalizedStrFromMem(pCurrEntry.Name[:]), i, err)
+					noErrs = false
+				}
+
+				if len(clusterChain)-1 != int(math.Ceil(float64(pCurrEntry.Size)/float64(pFs.ClusterSize))) { // -1 because the last cluster is not counted
+					fmt.Printf("FILESYSTEM ENTRY \"%s\" CORRUPTED WHILE READING FAT%d: DATA SIZE MISMATCH\n", utils.GetNormalizedStrFromMem(pCurrEntry.Name[:]), i)
+					noErrs = false
+				}
 			}
 
 		} else {
 			// attempt to read the self reference entry if the entry is not root
 			if utils.GetNormalizedStrFromMem(pCurrEntry.Name[:]) != consts.PathDelimiter {
-				_, err = utils.ReadDirectoryEntryFromCluster(dataRef[pCurrEntry.StartCluster*uint32(pFs.ClusterSize) : (pCurrEntry.StartCluster+1)*uint32(pFs.ClusterSize)])
+				pCurrEntryFromData, err = utils.ReadDirectoryEntryFromCluster(dataRef[pCurrEntry.StartCluster*uint32(pFs.ClusterSize) : (pCurrEntry.StartCluster+1)*uint32(pFs.ClusterSize)])
 				if err != nil {
 					fmt.Printf("FILESYSTEM ENTRY \"%s\" CORRUPTED WITH ERROR: %s\n", utils.GetNormalizedStrFromMem(pCurrEntry.Name[:]), err)
+					noErrs = false
+				}
+
+				if utils.GetNormalizedStrFromMem(pCurrEntry.Name[:]) != utils.GetNormalizedStrFromMem(pCurrEntryFromData.Name[:]) ||
+					pCurrEntry.IsFile != pCurrEntryFromData.IsFile ||
+					pCurrEntry.StartCluster != pCurrEntryFromData.StartCluster ||
+					pCurrEntry.ParentCluster != pCurrEntryFromData.ParentCluster ||
+					pCurrEntry.Size != pCurrEntryFromData.Size {
+					fmt.Printf("FILESYSTEM ENTRY \"%s\" CORRUPTED\n", utils.GetNormalizedStrFromMem(pCurrEntry.Name[:]))
 					noErrs = false
 				}
 			}
@@ -488,12 +517,7 @@ func checkCommand(pFs *pseudo_fat.FileSystem, fatsRef [][]int32, dataRef []byte)
 			}
 
 			if len(children) > 0 {
-				// if the entry is root, do not ommit the first entry (self reference not returned for root)
-				if utils.GetNormalizedStrFromMem(pCurrEntry.Name[:]) == consts.PathDelimiter {
-					queue = append(queue, children...)
-				} else {
-					queue = append(queue, children[1:]...)
-				}
+				queue = append(queue, children...)
 			}
 		}
 	}
@@ -501,6 +525,85 @@ func checkCommand(pFs *pseudo_fat.FileSystem, fatsRef [][]int32, dataRef []byte)
 	if noErrs {
 		fmt.Println(consts.CmdSuccessMsg)
 	}
+}
+
+// bugCommand handles the bug command.
+func bugCommand(pCommand *Command, pFs *pseudo_fat.FileSystem, fatsRef [][]int32, dataRef []byte) (bool, error) {
+	// sanity check
+	if pFs == nil || fatsRef == nil || dataRef == nil {
+		return false, custom_errors.ErrNilPointer
+	}
+
+	// check if the command is valid
+	if len(pCommand.Args) != 1 {
+		return false, custom_errors.ErrInvalArgsCount
+	}
+
+	// get the path
+	normAbsPath, err := makePathNormAbs(pCommand.Args[0], pFs, fatsRef, dataRef)
+	if err != nil {
+		return false, err
+	}
+
+	// get the file data
+	branchDirEntries, err := utils.GetBranchDirEntriesFromRoot(pFs, fatsRef, dataRef, normAbsPath)
+	if err != nil {
+		return false, err
+	}
+
+	pEntry := branchDirEntries[len(branchDirEntries)-1]
+	if !pEntry.IsFile {
+		return false, custom_errors.ErrIsDir
+	}
+
+	// randomly corrupt the file
+	corruptFat := 0      // 50% chance to corrupt the fat table entry
+	corruptDirEntry := 1 // 50% chance to corrupt the directory entry
+	randCorrupt := rand.Intn(corruptDirEntry + 1)
+
+	switch randCorrupt {
+	case corruptFat:
+		clusterChain, err := utils.GetClusterChain(pEntry.StartCluster, fatsRef[0])
+		if err != nil {
+			return false, err
+		}
+
+		randCluster := clusterChain[rand.Intn(len(clusterChain))]
+		randFAT := rand.Intn(len(fatsRef))
+
+		// randomly corrupt the cluster chain
+		corruptionFileFree := 0   // 33% chance to corrupt with a file free
+		corruptionBadCluster := 1 // 33% chance to corrupt with a bad cluster
+		corruptionCycle := 2      // 33% chance to corrupt with a cycle
+		randCorruptVal := rand.Intn(corruptionCycle + 1)
+
+		switch randCorruptVal {
+		case corruptionFileFree:
+			fatsRef[randFAT][randCluster] = consts.FatFree
+			logging.Debug(fmt.Sprintf("Corrupted FAT%d[%d] with free cluster flag", randFAT, randCluster))
+		case corruptionBadCluster:
+			fatsRef[randFAT][randCluster] = consts.FatBadCluster
+			logging.Debug(fmt.Sprintf("Corrupted FAT%d[%d] with bad cluster", randFAT, randCluster))
+		case corruptionCycle:
+			lastInChain := clusterChain[len(clusterChain)-1]
+			fatsRef[randFAT][lastInChain] = int32(randCluster)
+			logging.Debug(fmt.Sprintf("Corrupted FAT%d[%d] with cycle to %d", randFAT, lastInChain, randCluster))
+		}
+
+	case corruptDirEntry:
+		logging.Debug(fmt.Sprintf("Corrupting directory entry %s", utils.GetNormalizedStrFromMem(pEntry.Name[:])))
+		// randomize the bytes
+		// debug print the bytes from dataRef before the corruption
+		fmt.Println(dataRef[pEntry.StartCluster*uint32(pFs.ClusterSize) : (pEntry.StartCluster+1)*uint32(pFs.ClusterSize)])
+		for b := 0; b < int(unsafe.Sizeof(*pEntry)); b++ {
+			dataRef[pEntry.StartCluster*uint32(pFs.ClusterSize)+uint32(b)] = byte(rand.Intn(consts.ByteSizeInt))
+		}
+		logging.Debug(fmt.Sprintf("Corrupted directory entry %s", utils.GetNormalizedStrFromMem(pEntry.Name[:])))
+		// print the bytes from dataRef after the corruption
+		fmt.Println(dataRef[pEntry.StartCluster*uint32(pFs.ClusterSize) : (pEntry.StartCluster+1)*uint32(pFs.ClusterSize)])
+	}
+
+	return true, nil
 }
 
 // handleUninitializedFSCmd handles the command when the filesystem is not initialized.
@@ -688,9 +791,43 @@ func handleInitializedFSCmd(pFs *pseudo_fat.FileSystem,
 		checkCommand(pFs, *pFatsRef, *pDataRef)
 		return fsChanged, err
 
+	case consts.BugCommand:
+		fsChanged, err = bugCommand(pCommand, pFs, *pFatsRef, *pDataRef)
+		if err != nil {
+			return fsChanged, err
+		}
+
 	case consts.DebugCommand:
 		logging.Debug(fmt.Sprintf("FATS: \n%s", utils.PFormatFats(*pFatsRef)))
+		pEntries := make([]*pseudo_fat.DirectoryEntry, 0)
+		queue := make([]*pseudo_fat.DirectoryEntry, 0)
+		pRootDir, err := utils.GetRootDirEntry(pFs, *pFatsRef, *pDataRef)
+		if err != nil {
+			return fsChanged, err
+		}
 
+		queue = append(queue, pRootDir)
+		for {
+			if len(queue) == 0 {
+				break
+			}
+
+			pCurrEntry := queue[0]
+			queue = queue[1:]
+
+			pEntries = append(pEntries, pCurrEntry)
+
+			if !pCurrEntry.IsFile {
+				children, err := utils.GetDirEntries(pFs, pCurrEntry, *pFatsRef, *pDataRef)
+				if err != nil {
+					return fsChanged, err
+				}
+
+				queue = append(queue, children...)
+			}
+		}
+
+		logging.Debug("DEBUG STOP")
 	}
 
 	fmt.Printf("%s\n", consts.CmdSuccessMsg)

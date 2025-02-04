@@ -46,3 +46,6 @@ const StudentNumLen uint8 = 9
 
 // FATableCount is the number of FAT tables
 const FATableCount uint8 = 2
+
+// ByteSizeInt is the size of a byte
+const ByteSizeInt = 256
