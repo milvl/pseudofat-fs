@@ -404,6 +404,47 @@ func moveCommand(pCommand *Command, pFs *pseudo_fat.FileSystem, fatsRef [][]int3
 	return true, nil
 }
 
+// copyCommand copies a file to a new location.
+func copyCommand(pCommand *Command, pFs *pseudo_fat.FileSystem, fatsRef [][]int32, dataRef []byte) (bool, error) {
+	// sanity check
+	if pCommand == nil || pFs == nil || fatsRef == nil || dataRef == nil {
+		return false, custom_errors.ErrNilPointer
+	}
+	if len(pCommand.Args) != 2 {
+		return false, custom_errors.ErrInvalArgsCount
+	}
+
+	// check if the file name is valid
+	srcBasename := utils.GetPathBasename(pCommand.Args[0])
+	if srcBasename == consts.CurrDirSymbol || srcBasename == consts.ParentDirSymbol || srcBasename == "" {
+		return false, custom_errors.ErrInvalidDirEntryName
+	}
+
+	// get the source path
+	srcPath, err := makePathNormAbs(pCommand.Args[0], pFs, fatsRef, dataRef)
+	if err != nil {
+		return false, err
+	}
+
+	// get the destination path
+	unprocessedDestPath := pCommand.Args[1]
+	if strings.HasSuffix(unprocessedDestPath, consts.PathDelimiter) {
+		unprocessedDestPath = unprocessedDestPath + srcBasename
+	}
+
+	destPath, err := makePathNormAbs(unprocessedDestPath, pFs, fatsRef, dataRef)
+	if err != nil {
+		return false, err
+	}
+
+	err = utils.CopyFile(pFs, fatsRef, dataRef, srcPath, destPath)
+	if err != nil {
+		return false, err
+	}
+
+	return true, nil
+}
+
 // concatCommand handles the concatenation command.
 func concatCommand(pCommand *Command, pFs *pseudo_fat.FileSystem, fatsRef [][]int32, dataRef []byte) ([]byte, error) {
 	// sanity check
@@ -809,6 +850,15 @@ func handleInitializedFSCmd(pFs *pseudo_fat.FileSystem,
 
 	case consts.MoveCommand:
 		fsChanged, err = moveCommand(pCommand, pFs, *pFatsRef, *pDataRef)
+		if err != nil {
+			return fsChanged, err
+		}
+
+	case consts.CopyCommand:
+		fsChanged, err = copyCommand(pCommand, pFs, *pFatsRef, *pDataRef)
+		if err != nil {
+			return fsChanged, err
+		}
 
 	case consts.ConcatCommand:
 		var dataRef []byte
