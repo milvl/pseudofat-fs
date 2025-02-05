@@ -574,53 +574,6 @@ func Rmdir(pFs *pseudo_fat.FileSystem, fats [][]int32, data []byte, p_pwd *pseud
 	return nil
 }
 
-// RemoveFile removes an existing file from the specified parent directory.
-// Expects the absNormPathToFile to be a valid normalized absolute path.
-func RemoveFile(pFs *pseudo_fat.FileSystem, fatsRef [][]int32, dataRef []byte, absNormPathToFile string) error {
-	// sanity checks
-	if pFs == nil || fatsRef == nil || dataRef == nil || absNormPathToFile == "" {
-		return custom_errors.ErrNilPointer
-	}
-
-	logging.Debug(fmt.Sprintf("Removing file: \"%s\"", absNormPathToFile))
-
-	// get the directory entry of the target file
-	pDirEntries, err := GetBranchDirEntriesFromRoot(pFs, fatsRef, dataRef, absNormPathToFile)
-	if err != nil {
-		return err
-	}
-
-	// get the last entry in the branch
-	pTargetFileEntry := pDirEntries[len(pDirEntries)-1]
-	if !pTargetFileEntry.IsFile {
-		return custom_errors.ErrIsDir
-	}
-
-	// get the parent directory entry
-	pParentDirEntry := pDirEntries[len(pDirEntries)-2]
-
-	// remove the target file entry
-	err = removeParentTargetEntry(pFs, fatsRef, dataRef, pParentDirEntry, pTargetFileEntry)
-	if err != nil {
-		return fmt.Errorf("failed to remove target entry from the parent directory: %w", err)
-	}
-
-	// get the cluster chain for the file (for freeing the clusters)
-	clusterChain, err := GetClusterChain(pTargetFileEntry.StartCluster, fatsRef[0])
-	if err != nil {
-		return fmt.Errorf("failed to get cluster chain: %w", err)
-	}
-
-	// free the file clusters
-	for _, clusterIndex := range clusterChain {
-		markFreeCluster(fatsRef, clusterIndex)
-		bytesOffset := int(clusterIndex) * int(pFs.ClusterSize)
-		copy(dataRef[bytesOffset:], make([]byte, int(pFs.ClusterSize)))
-	}
-
-	return nil
-}
-
 // CopyInsideFS copies a file to a new location in the filesystem.
 func CopyInsideFS(pFs *pseudo_fat.FileSystem, fatsRef [][]int32, dataRef []byte, absNormDestPath string, fileDataRef []byte) error {
 	// sanity checks
@@ -668,7 +621,7 @@ func CopyInsideFS(pFs *pseudo_fat.FileSystem, fatsRef [][]int32, dataRef []byte,
 	pParentDirEntry := ancestorEntriesRef[len(ancestorEntriesRef)-1]
 
 	// figure out if the file will fit into the filesystem
-	finalBytesNeeded := len(fileDataRef) + int(pFs.ClusterSize) + int(pFs.ClusterSize) // file data + 2 directory entries
+	finalBytesNeeded := len(fileDataRef) + int(pFs.ClusterSize) + int(pFs.ClusterSize) // file data + 2 directory entries (one self ref, one parent ref)
 	clustersReady, err := findFreeClustersForFile(finalBytesNeeded, referencedFat)
 	if err != nil {
 		return err
@@ -763,4 +716,172 @@ func GetFileBytes(pFs *pseudo_fat.FileSystem, fatsRef [][]int32, dataRef []byte,
 	}
 
 	return fileData, nil
+}
+
+// RemoveFile removes an existing file from the specified parent directory.
+// Expects the absNormPathToFile to be a valid normalized absolute path.
+func RemoveFile(pFs *pseudo_fat.FileSystem, fatsRef [][]int32, dataRef []byte, absNormPathToFile string) error {
+	// sanity checks
+	if pFs == nil || fatsRef == nil || dataRef == nil || absNormPathToFile == "" {
+		return custom_errors.ErrNilPointer
+	}
+
+	logging.Debug(fmt.Sprintf("Removing file: \"%s\"", absNormPathToFile))
+
+	// get the directory entry of the target file
+	pDirEntries, err := GetBranchDirEntriesFromRoot(pFs, fatsRef, dataRef, absNormPathToFile)
+	if err != nil {
+		return err
+	}
+
+	// get the last entry in the branch
+	pTargetFileEntry := pDirEntries[len(pDirEntries)-1]
+	if !pTargetFileEntry.IsFile {
+		return custom_errors.ErrIsDir
+	}
+
+	// get the parent directory entry
+	pParentDirEntry := pDirEntries[len(pDirEntries)-2]
+
+	// remove the target file entry
+	err = removeParentTargetEntry(pFs, fatsRef, dataRef, pParentDirEntry, pTargetFileEntry)
+	if err != nil {
+		return fmt.Errorf("failed to remove target entry from the parent directory: %w", err)
+	}
+
+	// get the cluster chain for the file (for freeing the clusters)
+	clusterChain, err := GetClusterChain(pTargetFileEntry.StartCluster, fatsRef[0])
+	if err != nil {
+		return fmt.Errorf("failed to get cluster chain: %w", err)
+	}
+
+	// free the file clusters
+	for _, clusterIndex := range clusterChain {
+		markFreeCluster(fatsRef, clusterIndex)
+		bytesOffset := int(clusterIndex) * int(pFs.ClusterSize)
+		copy(dataRef[bytesOffset:], make([]byte, int(pFs.ClusterSize)))
+	}
+
+	return nil
+}
+
+// MoveFile moves an existing file to a new location in the filesystem
+// or renames the file if the target path is in the same directory.
+//
+// Expects the absNormSrcPath to be a valid normalized absolute path.
+func MoveFile(pFs *pseudo_fat.FileSystem, fatsRef [][]int32, dataRef []byte, absNormSrcPath string, absNormDestPath string) error {
+	// sanity checks
+	if pFs == nil || fatsRef == nil || dataRef == nil || absNormSrcPath == "" || absNormDestPath == "" {
+		return custom_errors.ErrNilPointer
+	}
+
+	logging.Debug(fmt.Sprintf("Moving file \"%s\" to \"%s\"", absNormSrcPath, absNormDestPath))
+
+	// get the branch for the source file (returns error if the file does not exist)
+	fileEntriesRef, err := GetBranchDirEntriesFromRoot(pFs, fatsRef, dataRef, absNormSrcPath)
+	if err != nil {
+		return err
+	}
+
+	// get the last entry in the branch and its parent
+	pSrcEntry := fileEntriesRef[len(fileEntriesRef)-1]
+	if !pSrcEntry.IsFile {
+		return custom_errors.ErrIsDir
+	}
+	pSrcParentEntry := fileEntriesRef[len(fileEntriesRef)-2]
+
+	// check if the destination path already exists
+	exists, err := entryExists(pFs, fatsRef, dataRef, absNormDestPath)
+	if err != nil {
+		return err
+	}
+	if exists {
+		return custom_errors.ErrEntryExists
+	}
+
+	// get the closest common ancestor of the source and destination paths
+	srcSegments := GetPathSegments(absNormSrcPath)
+	destSegments := GetPathSegments(absNormDestPath)
+	originalSrcName := srcSegments[len(srcSegments)-1]
+	destName := destSegments[len(destSegments)-1]
+	ancestorSrc := strings.Join(srcSegments[:len(srcSegments)-1], consts.PathDelimiter)
+	ancestorDest := strings.Join(destSegments[:len(destSegments)-1], consts.PathDelimiter)
+
+	// prepare the new directory entry
+	pNewDirEntry := NewDirectoryEntry(true, pSrcEntry.Size, pSrcEntry.StartCluster, pSrcParentEntry.StartCluster, destName)
+	newDirEntryBytes, err := StructToBytes(pNewDirEntry)
+	if err != nil {
+		return fmt.Errorf("failed to serialize directory entry: %w", err)
+	}
+
+	referecedFat := fatsRef[0]
+
+	// if the source and destination are the same, only the name is changed
+	if ancestorSrc == ancestorDest {
+		// find the cluster index of the source parents entry
+		srcParentClusterChain, err := GetClusterChain(pSrcParentEntry.StartCluster, referecedFat)
+		if err != nil {
+			return fmt.Errorf("failed to get cluster chain: %w", err)
+		}
+		for _, clusterIndex := range srcParentClusterChain {
+			byteOffset := int(clusterIndex) * int(pFs.ClusterSize)
+			clusterData := dataRef[byteOffset : byteOffset+int(pFs.ClusterSize)]
+			pEntry, err := ReadDirectoryEntryFromCluster(clusterData)
+			if err != nil {
+				return fmt.Errorf("failed to read directory entry: %w", err)
+			}
+
+			if GetNormalizedStrFromMem(pEntry.Name[:]) == originalSrcName {
+				copy(dataRef[byteOffset:], newDirEntryBytes)
+				break
+			}
+		}
+
+		// write the new directory entry to the its own cluster
+		byteOffset := int(pNewDirEntry.StartCluster) * int(pFs.ClusterSize)
+		copy(dataRef[byteOffset:], newDirEntryBytes)
+
+		return nil
+
+		// if the source and destination are different, the file is moved
+	} else {
+		// get the branch for the destination directory
+		pDestEntries, err := GetBranchDirEntriesFromRoot(pFs, fatsRef, dataRef, ancestorDest)
+		if err != nil {
+			return err
+		}
+		pNewParentEntry := pDestEntries[len(pDestEntries)-1]
+
+		// remove the source file entry from the parent directory entry chain
+		err = removeParentTargetEntry(pFs, fatsRef, dataRef, pSrcParentEntry, pSrcEntry)
+		if err != nil {
+			return fmt.Errorf("failed to remove target entry from the parent directory: %w", err)
+		}
+
+		// find a free cluster for the new parent directory entry
+		freeClusterIndexParent, err := findFreeCluster(referecedFat)
+		if err != nil {
+			return err
+		}
+
+		// find last cluster in the new parent directory chain
+		clusterChain, err := GetClusterChain(pNewParentEntry.StartCluster, referecedFat)
+		if err != nil {
+			return fmt.Errorf("failed to get cluster chain: %w", err)
+		}
+		pNewParentLastCluster := clusterChain[len(clusterChain)-1]
+
+		// update the parent directory entry chain in the FAT
+		addToFat(fatsRef, pNewParentLastCluster, freeClusterIndexParent)
+
+		// write the new directory entry to the parent directory cluster
+		byteOffset := int(freeClusterIndexParent) * int(pFs.ClusterSize)
+		copy(dataRef[byteOffset:], newDirEntryBytes)
+
+		// write the new directory entry to the its own cluster
+		byteOffset = int(pNewDirEntry.StartCluster) * int(pFs.ClusterSize)
+		copy(dataRef[byteOffset:], newDirEntryBytes)
+	}
+
+	return nil
 }

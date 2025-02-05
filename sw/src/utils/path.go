@@ -25,6 +25,8 @@ func FilepathValid(path string) (bool, error) {
 
 // GetNormalizedPathNodes processes the absolute path and returns a slice of normalized path nodes.
 // Handles "." and ".." segments.
+//
+// NOTE: It does not include the root directory in the result.
 func GetNormalizedPathNodes(absPath string) ([]string, error) {
 	if !strings.HasPrefix(absPath, consts.PathDelimiter) {
 		return nil, fmt.Errorf("path must be absolute")

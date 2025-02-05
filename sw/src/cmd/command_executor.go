@@ -164,6 +164,11 @@ func changeDirCommand(pCommand *Command, pFs *pseudo_fat.FileSystem, fatsRef [][
 		return false, err
 	}
 
+	// check if the last entry is a directory
+	if pDirEntries[len(pDirEntries)-1].IsFile {
+		return false, custom_errors.ErrIsFile
+	}
+
 	// set the current directory
 	P_CurrDir = pDirEntries[len(pDirEntries)-1]
 	logging.Debug(fmt.Sprintf("Current directory set to: %s", P_CurrDir.ToString()))
@@ -347,6 +352,51 @@ func copyInsideFS(pCommand *Command, pFs *pseudo_fat.FileSystem, fatsRef [][]int
 	}
 
 	err = utils.CopyInsideFS(pFs, fatsRef, dataRef, absPath, fileData)
+	if err != nil {
+		return false, err
+	}
+
+	return true, nil
+}
+
+// moveCommand moves a file to a new location/renames it.
+func moveCommand(pCommand *Command, pFs *pseudo_fat.FileSystem, fatsRef [][]int32, dataRef []byte) (bool, error) {
+	// sanity check
+	if pCommand == nil || pFs == nil || fatsRef == nil || dataRef == nil {
+		return false, custom_errors.ErrNilPointer
+	}
+	if len(pCommand.Args) != 2 {
+		return false, custom_errors.ErrInvalArgsCount
+	}
+
+	// check if the file name is valid
+	srcBasename := utils.GetPathBasename(pCommand.Args[0])
+	if srcBasename == consts.CurrDirSymbol || srcBasename == consts.ParentDirSymbol || srcBasename == "" {
+		return false, custom_errors.ErrInvalidDirEntryName
+	}
+
+	// get the source path
+	srcPath, err := makePathNormAbs(pCommand.Args[0], pFs, fatsRef, dataRef)
+	if err != nil {
+		return false, err
+	}
+
+	unprocessedDestPath := pCommand.Args[1]
+	if strings.HasSuffix(unprocessedDestPath, consts.PathDelimiter) {
+		unprocessedDestPath = unprocessedDestPath + srcBasename
+	}
+
+	// get the destination path
+	destPath, err := makePathNormAbs(unprocessedDestPath, pFs, fatsRef, dataRef)
+	if err != nil {
+		return false, err
+	}
+
+	if srcPath == destPath {
+		return false, nil
+	}
+
+	err = utils.MoveFile(pFs, fatsRef, dataRef, srcPath, destPath)
 	if err != nil {
 		return false, err
 	}
@@ -756,6 +806,9 @@ func handleInitializedFSCmd(pFs *pseudo_fat.FileSystem,
 		if err != nil {
 			return fsChanged, err
 		}
+
+	case consts.MoveCommand:
+		fsChanged, err = moveCommand(pCommand, pFs, *pFatsRef, *pDataRef)
 
 	case consts.ConcatCommand:
 		var dataRef []byte
