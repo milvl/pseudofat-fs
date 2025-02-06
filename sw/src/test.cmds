@@ -1,0 +1,31 @@
+format 50MB
+mkdir 1a
+mkdir 1b
+mkdir 1a/2a
+mkdir /1a/2b
+cd 1a/2a
+incp main.go main.txt
+# /
+# -1a/
+#   -2a/
+#     -main.txt
+#   -2b/
+# -1b/
+
+# if uncommented, next line causes intentional err
+#rmdir .
+
+rmdir /1a/2a
+outcp main.txt main.txt
+load testr.cmds
+cd /
+rm 1a/2a/main.txt
+rmdir /1a/2a
+rmdir /1a/2b
+
+# /
+# -1a/
+# -1b/
+
+exit
+
