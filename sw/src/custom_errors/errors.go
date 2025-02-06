@@ -42,10 +42,10 @@ var ErrUnknownCmd = errors.New("unknown command")
 var ErrHelpWanted = errors.New("user requested help message")
 
 // ErrIsDir is an error for chosen file is a directory
-var ErrIsDir = errors.New("chosen file is a directory")
+var ErrIsDir = errors.New("chosen entry is a directory")
 
 // ErrIsFile is an error for chosen file is a file
-var ErrIsFile = errors.New("chosen directory is a file")
+var ErrIsFile = errors.New("chosen entry is a file")
 
 // ErrNilPointer is an error for nil pointer
 var ErrNilPointer = errors.New("nil pointer provided")
@@ -95,6 +95,9 @@ var ErrDirNotFound = errors.New("directory not found")
 // ErrFileNotFound is an error for file not found
 var ErrInvalidPath = errors.New("invalid path")
 
+// ErrPathNotFound is an error for path not found
+var ErrPathNotFound = errors.New("path not found")
+
 // ErrDirNotEmpty is an error for directory not empty
 var ErrDirNotEmpty = errors.New("directory not empty")
 
@@ -118,3 +121,26 @@ var ErrEntryNotFound = errors.New("entry not found")
 
 // ErrBadCluster is an error for bad cluster
 var ErrBadCluster = errors.New("bad cluster")
+
+// IsErrDefined returns true if the error is custom and
+// defined with message for user
+func IsErrDefined(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	switch err {
+	case ErrInvalArgsCount, ErrEmptyPath, ErrPathTooLong, ErrInvalidPathCharacter,
+		ErrUnknownPathsCount, ErrInvalFormatUnits, ErrParsingUnits, ErrInvalidFilesizeFormat,
+		ErrNilCmd, ErrEmptyCmdName, ErrUnknownCmd, ErrIsDir, ErrIsFile,
+		ErrInvalidFileSys, ErrCreatingFile, ErrPathNotFound,
+		ErrOpeningFile, ErrFSUninitialized, ErrDiskTooSmall,
+		ErrNoFreeCluster, ErrDirNotFound,
+		ErrInvalidPath, ErrDirNotEmpty, ErrInvalidDirEntryName, ErrDirAlreadyExists,
+		ErrEntryExists, ErrDirInUse, ErrInFileNotFound, ErrEntryNotFound, ErrBadCluster:
+		return true
+
+	default:
+		return false
+	}
+}

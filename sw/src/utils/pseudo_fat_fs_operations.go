@@ -64,11 +64,6 @@ func ReadDirectoryEntryFromCluster(clusterData []byte) (*pseudo_fat.DirectoryEnt
 		return nil, fmt.Errorf("failed to deserialize directory entry: %w", err)
 	}
 
-	// TODO delete if not needed
-	// if entry.IsFile {
-	// 	return nil, fmt.Errorf("entry is a file, not a directory")
-	// }
-
 	return &entry, nil
 }
 
@@ -366,6 +361,9 @@ func Mkdir(pFs *pseudo_fat.FileSystem, fats [][]int32, data []byte, absNormPathT
 	// sanity check for invalid ancestor path
 	ancestorEntriesRef, err := GetBranchDirEntriesFromRoot(pFs, fats, data, ancestorBranchPath)
 	if err != nil {
+		if err == custom_errors.ErrEntryNotFound {
+			return custom_errors.ErrPathNotFound
+		}
 		return err
 	}
 
@@ -602,6 +600,9 @@ func CopyInsideFS(pFs *pseudo_fat.FileSystem, fatsRef [][]int32, dataRef []byte,
 	ancestorBranchPath := strings.Join(pathSegments[:len(pathSegments)-1], consts.PathDelimiter)
 	ancestorEntriesRef, err := GetBranchDirEntriesFromRoot(pFs, fatsRef, dataRef, ancestorBranchPath)
 	if err != nil {
+		if err == custom_errors.ErrEntryNotFound {
+			return custom_errors.ErrPathNotFound
+		}
 		return err
 	}
 
@@ -849,6 +850,9 @@ func MoveFile(pFs *pseudo_fat.FileSystem, fatsRef [][]int32, dataRef []byte, abs
 		// get the branch for the destination directory
 		pDestEntries, err := GetBranchDirEntriesFromRoot(pFs, fatsRef, dataRef, ancestorDest)
 		if err != nil {
+			if err == custom_errors.ErrEntryNotFound {
+				return custom_errors.ErrPathNotFound
+			}
 			return err
 		}
 		pNewParentEntry := pDestEntries[len(pDestEntries)-1]
@@ -948,6 +952,9 @@ func CopyFile(pFs *pseudo_fat.FileSystem, fatsRef [][]int32, dataRef []byte, abs
 	// get the branch for the destination directory
 	pDestEntries, err := GetBranchDirEntriesFromRoot(pFs, fatsRef, dataRef, ancestorDest)
 	if err != nil {
+		if err == custom_errors.ErrEntryNotFound {
+			return custom_errors.ErrPathNotFound
+		}
 		return err
 	}
 	pNewParentEntry := pDestEntries[len(pDestEntries)-1]

@@ -43,7 +43,7 @@ func acceptCmds(scanner *bufio.Scanner, cmdIn chan *cmd.Command, endFlagChan cha
 					fmt.Println(consts.UnknownCmdMsg)
 					fmt.Println(consts.HintMsg)
 				default:
-					logging.Error(fmt.Sprintf("(ADD CUSTOM MSGS FOR FAILS) - Not specified err: %s", err))
+					logging.Error(fmt.Sprintf("Not specified err: %s", err))
 				}
 			} else {
 				logging.Debug(fmt.Sprintf("Parsed command: %s", pCommand))

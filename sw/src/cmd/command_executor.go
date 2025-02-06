@@ -161,6 +161,9 @@ func changeDirCommand(pCommand *Command, pFs *pseudo_fat.FileSystem, fatsRef [][
 	// get the directory entry
 	pDirEntries, err := utils.GetBranchDirEntriesFromRoot(pFs, fatsRef, dataRef, absPath)
 	if err != nil {
+		if err == custom_errors.ErrEntryNotFound {
+			return false, custom_errors.ErrPathNotFound
+		}
 		return false, err
 	}
 
@@ -222,16 +225,7 @@ func rmdirCommand(pCommand *Command, pFs *pseudo_fat.FileSystem, fatsRef [][]int
 
 	err = utils.Rmdir(pFs, fatsRef, dataRef, P_CurrDir, absPath)
 	if err != nil {
-		switch err {
-		case custom_errors.ErrDirNotFound:
-			fmt.Println(consts.DirNotFound)
-			return false, err
-		case custom_errors.ErrDirNotEmpty:
-			fmt.Println(consts.NotEmpty)
-			return false, err
-		default:
-			return false, fmt.Errorf("error removing directory: %s", err)
-		}
+		return false, err
 	}
 
 	return true, nil
@@ -298,6 +292,9 @@ func listCommand(pCommand *Command, pFs *pseudo_fat.FileSystem, fatsRef [][]int3
 	// get the directory entries
 	branchDirEntries, err := utils.GetBranchDirEntriesFromRoot(pFs, fatsRef, dataRef, normAbsPath)
 	if err != nil {
+		if err == custom_errors.ErrEntryNotFound {
+			return nil, custom_errors.ErrPathNotFound
+		}
 		return nil, err
 	}
 
@@ -713,6 +710,7 @@ func interpretScriptCommand(pCommand *Command, pFs *pseudo_fat.FileSystem, pFats
 	commands = append(commands, pCommand)
 	for {
 		pCurrCommand := commands[0]
+		fmt.Println(pCurrCommand.ToString())
 		commands = commands[1:]
 
 		if pCurrCommand.Name == consts.InterpretScriptCommand {
@@ -1029,7 +1027,12 @@ func ExecuteCommand(
 	}
 
 	if err != nil {
-		return fmt.Errorf("error executing command: %s", err)
+		if custom_errors.IsErrDefined(err) {
+			errParts := strings.Split(err.Error(), ":")
+			fmt.Println(strings.ToUpper(errParts[len(errParts)-1]))
+		} else {
+			return fmt.Errorf("error executing command: %s", err)
+		}
 	}
 
 	// if the filesystem was changed, write it to the file

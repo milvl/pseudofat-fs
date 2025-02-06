@@ -23,9 +23,8 @@ const (
 )
 
 // defaultAllowedLevels represents the default log levels
-const defaultAllowedLevels = DEBUG | INFO | WARNING | ERROR | CRITICAL
-
-// const defaultAllowedLevels = ERROR | CRITICAL
+// const defaultAllowedLevels = DEBUG | INFO | WARNING | ERROR | CRITICAL
+const defaultAllowedLevels = INFO | WARNING | ERROR | CRITICAL
 
 // defaultTimeFormat represents the default time format
 const defaultTimeFormat = "15:04:05.000000"

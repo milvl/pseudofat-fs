@@ -16,12 +16,13 @@ Commands:
   cat s1         - Display contents of file "s1".
   cd a1          - Change current directory to "a1".
   pwd            - Print the current working directory.
-  info a1/s1     - Display cluster information of file "s1" or directory "a1".
+  info s1        - Display cluster information of file "s1".
   incp s1 s2     - Import file "s1" from disk to location "s2" in the filesystem.
   outcp s1 s2    - Export file "s1" from filesystem to "s2" on the disk.
   load s1        - Load and execute commands from file "s1" sequentially (one command per line).
   format <size>  - Format the filesystem to the specified size, overwriting existing data.
-  defrag s1      - Defragment file "s1" to ensure its data blocks are stored consecutively.
+  check          - Check the filesystem for errors.
+  bug s1         - Simulate a bug in the filesystem for file "s1".
 
 Example:
   To create a filesystem, format it, and perform operations:
@@ -68,6 +69,9 @@ const InFileNotFound = "INPUT FILE NOT FOUND"
 
 // NotEmpty is the message displayed when the directory is not empty
 const NotEmpty = "NOT EMPTY"
+
+// InvalidPath is the message displayed when the path is invalid
+const InvalidPath = "INVALID PATH CHOICE FOR SELECTED OPERATION"
 
 // CmdSuccessMsg is the message displayed when the command is successful
 const CmdSuccessMsg = "OK"
