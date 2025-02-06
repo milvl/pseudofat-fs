@@ -761,7 +761,7 @@
 
 - `clone()` a implementace vláken v Linuxu:
   - Ano, `clone()` se používá k vytvoření vláken s volitelným sdílením prostředků.
-
+<!-- 
 ## Praktické úlohy
 
 - COBEGIN/COEND Graf (Kolejiště):
@@ -781,5 +781,5 @@
 - COBEGIN/COEND Graf ((a + b)\*c - (d - e)\*(f + g)):
   - Vhodné vyjádřit nejdříve stromovou strukturou.
 
-<div style="page-break-after: always;"></div>
+<div style="page-break-after: always;"></div> -->
 
