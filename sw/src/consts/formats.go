@@ -34,5 +34,11 @@ const CurrDirSymbol = "."
 // ParentDirSymbol is the symbol for the parent directory
 const ParentDirSymbol = ".."
 
+// ScriptDelimiter is a delimiter used for separating scripts when loading from a file
+const ScriptDelimiter = "\n"
+
+// CommentSymbol is the symbol for a comment
+const CommentSymbol = "#"
+
 // NewFilePermissions is the default permissions for a new file
 const NewFilePermissions = 0644

@@ -225,13 +225,13 @@ func rmdirCommand(pCommand *Command, pFs *pseudo_fat.FileSystem, fatsRef [][]int
 		switch err {
 		case custom_errors.ErrDirNotFound:
 			fmt.Println(consts.DirNotFound)
+			return false, err
 		case custom_errors.ErrDirNotEmpty:
 			fmt.Println(consts.NotEmpty)
+			return false, err
 		default:
 			return false, fmt.Errorf("error removing directory: %s", err)
 		}
-
-		return false, nil
 	}
 
 	return true, nil
@@ -697,6 +697,64 @@ func bugCommand(pCommand *Command, pFs *pseudo_fat.FileSystem, fatsRef [][]int32
 	return true, nil
 }
 
+// interpretScriptCommand interprets the script command.
+func interpretScriptCommand(pCommand *Command, pFs *pseudo_fat.FileSystem, pFatsRef *[][]int32, pDataRef *[]byte, endFlag chan struct{}) (bool, error) {
+	// sanity checks
+	if pCommand == nil || pFs == nil || pFatsRef == nil || pDataRef == nil {
+		return false, custom_errors.ErrNilPointer
+	}
+	if len(pCommand.Args) != 1 {
+		return false, custom_errors.ErrInvalArgsCount
+	}
+
+	fsChanged := false
+	var err error = nil
+	commands := make([]*Command, 0)
+	commands = append(commands, pCommand)
+	for {
+		pCurrCommand := commands[0]
+		commands = commands[1:]
+
+		if pCurrCommand.Name == consts.InterpretScriptCommand {
+			pScriptFile, err := os.ReadFile(pCurrCommand.Args[0])
+			if err != nil {
+				return fsChanged, err
+			}
+
+			scriptLines := strings.Split(string(pScriptFile), consts.ScriptDelimiter)
+			trailingCommands := commands
+			commands = make([]*Command, 0)
+			for _, line := range scriptLines {
+				// parse command
+				if line != "" && !strings.HasPrefix(line, consts.CommentSymbol) {
+					pCommand, err = ParseCommand(line)
+					if err != nil {
+						return fsChanged, err
+					}
+
+					// append the command to the commands
+					commands = append(commands, pCommand)
+				}
+			}
+
+			commands = append(commands, trailingCommands...)
+
+		} else {
+			if P_CurrDir == nil {
+				fsChanged, err = handleUninitializedFSCmd(pFs, pFatsRef, pDataRef, pCurrCommand, endFlag)
+			} else {
+				fsChanged, err = handleInitializedFSCmd(pFs, pFatsRef, pDataRef, pCurrCommand, endFlag)
+			}
+		}
+
+		if len(commands) < 1 {
+			break
+		}
+	}
+
+	return fsChanged, err
+}
+
 // handleUninitializedFSCmd handles the command when the filesystem is not initialized.
 func handleUninitializedFSCmd(pFs *pseudo_fat.FileSystem,
 	pFatsRef *[][]int32,
@@ -762,9 +820,7 @@ func handleInitializedFSCmd(pFs *pseudo_fat.FileSystem,
 	switch pCommand.Name {
 	case consts.HelpCommand:
 		err = helpCommand()
-		if err != nil {
-			return fsChanged, err
-		}
+		return fsChanged, err
 
 	case consts.ExitCommand:
 		close(endFlag)
@@ -859,6 +915,10 @@ func handleInitializedFSCmd(pFs *pseudo_fat.FileSystem,
 		if err != nil {
 			return fsChanged, err
 		}
+
+	case consts.InterpretScriptCommand:
+		fsChanged, err = interpretScriptCommand(pCommand, pFs, pFatsRef, pDataRef, endFlag)
+		return fsChanged, err
 
 	case consts.ConcatCommand:
 		var dataRef []byte
@@ -962,7 +1022,6 @@ func ExecuteCommand(
 	var fsChanged bool
 	var err error
 
-	// execute idle command
 	if P_CurrDir == nil {
 		fsChanged, err = handleUninitializedFSCmd(pFs, pFatsRef, pDataRef, pCommand, endFlag)
 	} else {
