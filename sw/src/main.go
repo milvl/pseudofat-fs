@@ -96,7 +96,7 @@ func interpretCmds(cmdOut chan *cmd.Command,
 				fmt.Println(consts.FSUninitializedMsg)
 				fmt.Println(consts.HintMsg)
 			default:
-				logging.Error(fmt.Sprintf("(ADD CUSTOM MSGS FOR FAILS) - Not specified err: %s", err))
+				logging.Error(fmt.Sprintf("Not specified err: %s", err))
 			}
 		}
 	}
