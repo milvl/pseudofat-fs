@@ -659,11 +659,16 @@ func CopyInsideFS(pFs *pseudo_fat.FileSystem, fatsRef [][]int32, dataRef []byte,
 	copy(dataRef[byteOffset:], newDirEntryBytes)
 
 	// write the file data to the filesystem
+	bytesRemaining := len(fileDataRef)
 	prevIndex := freeClusterIndex
 	for i, clusterIndex := range freeClusterIndicesData {
 		addToFat(fatsRef, prevIndex, clusterIndex)
 		byteOffset = int(clusterIndex) * int(pFs.ClusterSize)
-		copy(dataRef[byteOffset:], fileDataRef[i*int(pFs.ClusterSize):])
+		fileDataRefStartOffset := i * int(pFs.ClusterSize)
+		fileDataRefEndOffset := min((i+1)*int(pFs.ClusterSize), fileDataRefStartOffset+bytesRemaining)
+		currentSourceBytes := fileDataRef[fileDataRefStartOffset:fileDataRefEndOffset]
+		copiedBytesCount := copy(dataRef[byteOffset:], currentSourceBytes)
+		bytesRemaining -= copiedBytesCount
 		prevIndex = clusterIndex
 	}
 
