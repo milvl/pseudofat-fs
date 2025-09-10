@@ -1,68 +1,68 @@
-# <p style="text-align: center;">Dokumentace k semestrální práci z předmětu KIV/ZOS <br><br>Téma práce: Zjednodušený souborový systém založený na pseudoFAT</p>
+# <p style="text-align: center;">Simplified File System Based on pseudoFAT</p>
 
-> Autor: Milan Vlachovský
+> Author: Milan Vlachovský
 
-## Obsah
+## Contents
 
-- [1. Úvod](#1-úvod)
-- [2. Popis programu](#2-popis-programu)
-- [3. Architektura systému](#3-architektura-systému)
-- [4. Návod na zprovoznění](#4-návod-na-zprovoznění)
-- [5. Struktura projektu](#5-struktura-projektu)
-- [6. Popis implementace](#6-popis-implementace)
-- [7. Testování](#7-testování)
-- [8. Závěr](#8-závěr)
+- [1. Introduction](#1-introduction)
+- [2. Program Description](#2-program-description)
+- [3. System Architecture](#3-system-architecture)
+- [4. Setup Guide](#4-setup-guide)
+- [5. Project Structure](#5-project-structure)
+- [6. Implementation Details](#6-implementation-details)
+- [7. Testing](#7-testing)
+- [8. Conclusion](#8-conclusion)
 
-## 1. Úvod
+## 1. Introduction
 
 <style>body {text-align: justify}</style>
 
-Cílem tohoto projektu bylo vytvořit zjednodušený soubový systém, který funguje na pricipech známého souborového systému FAT. Jedná se pouze o simulaci souborového systému pro studijní účely.
-&nbsp;&nbsp;&nbsp;&nbsp;Jako programovací jazyk bylo potřeba zvolit jazyk nižší úrovně, ve kterém je možné manipulovat přímo s pamětí programu. Byl zvolen jazyk Go díky jeho efektivní správě paměti, podpoře paralelismu a relativně nízké úrovni abstrakce ve srovnání s jinými moderními jazyky.<div style="page-break-after: always;"></div>
+The goal of this project was to create a simplified file system that operates on the principles of the well-known FAT file system. It is only a simulation of a file system created within a university course for study purposes.
+&nbsp;&nbsp;&nbsp;&nbsp;A lower-level programming language that allows direct manipulation of program memory was required. Go was chosen thanks to its efficient memory management, support for concurrency, and relatively low level of abstraction compared to other modern languages.<div style="page-break-after: always;"></div>
 
-## 2. Popis programu
+## 2. Program Description
 
-Program implementuje zjednodušený souborový systém založený na principech FAT (File Allocation Table). Cílem je umožnit správu souborů a adresářů v rámci virtuálního disku, který je uložen jako binární soubor. Program poskytuje základní operace, jako je vytváření, mazání a přesouvání souborů, práce s adresáři a načítání či ukládání dat.
+The program implements a simplified file system based on the principles of FAT (File Allocation Table). The goal is to enable the management of files and directories within a virtual disk stored as a binary file. The program provides basic operations such as creating, deleting, and moving files, working with directories, and loading or saving data.
 
-- Podporované příkazy:
-  - `format <velikost>` – naformátování souborového systému na disk o zadané velikosti (se smazáním všech dat)
-  - `mkdir a1` – vytvoření adresáře
-  - `rmdir a1` – smazání prázdného adresáře
-  - `cd a1` – změna aktuálního adresáře
-  - `pwd` – zobrazení aktuální cesty
-  - `incp s1 s2` – nahrání souboru z disku do souborového systému
-  - `outcp s1 s2` – export souboru ze souborového systému na disk
-  - `cp s1 s2` – kopírování souboru
-  - `mv s1 s2` – přesunutí nebo přejmenování souboru
-  - `rm s1` – smazání souboru
-  - `ls a1` – výpis obsahu adresáře
-  - `cat s1` – zobrazení obsahu souboru
-  - `info s1/a1` – informace o souboru (v jakých clusterech se nachází)
-  - `load s1` – vykonání příkazů ze souboru
-  - `check` – kontrola konzistence souborového systému
-  - `bug s1` – záměrné poškození souboru (pro simulaci chyby)
-  - `exit` – ukončení programu
+- Supported commands:
+  - `format <size>` – format the file system on a disk of the given size (erases all data)
+  - `mkdir a1` – create a directory
+  - `rmdir a1` – delete an empty directory
+  - `cd a1` – change the current directory
+  - `pwd` – show the current path
+  - `incp s1 s2` – import a file from the host disk into the file system
+  - `outcp s1 s2` – export a file from the file system to the host disk
+  - `cp s1 s2` – copy a file
+  - `mv s1 s2` – move or rename a file
+  - `rm s1` – delete a file
+  - `ls a1` – list directory contents
+  - `cat s1` – display file contents
+  - `info s1/a1` – information about a file (which clusters it occupies)
+  - `load s1` – execute commands from a file
+  - `check` – check file system consistency
+  - `bug s1` – intentionally corrupt a file (to simulate an error)
+  - `exit` – exit the program
 
-  > Ve všech případech prředstavují `s1`, `s2` a `a1` cesty k souborům nebo adresářům ve virtuálním souborovém systému.
+  > In all cases, `s1`, `s2`, and `a1` represent paths to files or directories in the virtual file system.
 
-Program vytváří virtuální disk ve formě binárního souboru, do kterého data ukládá a ze kterého je načítá. Při zadání neplatného příkazu (neznámý příkaz, chybné argumenty, ...) program vypíše chybovou hlášku a pokračuje ve svém běhu. Program omezuje velikost disku pouze na 4 GiB (z praktických důvodů).<div style="page-break-after: always;"></div>
+The program creates a virtual disk in the form of a binary file, to which it writes data and from which it reads. When an invalid command is entered (unknown command, invalid arguments, ...), the program prints an error message and keeps running. For practical reasons, the program limits the disk size to 4 GiB.<div style="page-break-after: always;"></div>
 
-## 3. Architektura systému
+## 3. System Architecture
 
-### Hlavní struktury
+### Main Structures
 
-Souborový systém je strukturován do několika klíčových částí:
+The file system is structured into several key parts:
 
-- Hlavní metadata souborového systému:
-  - Struktura (`struct`) FileSystem
-  - Obsahuje informace definující rozložení souborového systému na disku.
-  - Struktura je 31 bytů dlouhá a obsahuje následující informace:
-    - velikost disku,
-    - počet FAT tabulek,
-    - počáteční adresy FAT tabulek,
-    - počáteční adresa datové oblasti,
-    - velikost clusteru,
-    - identifikátor autora souborového systému.
+- Main file system metadata:
+  - Structure (`struct`) `FileSystem`
+  - Contains information defining the layout of the file system on disk.
+  - The structure is 31 bytes long and contains the following information:
+    - disk size,
+    - number of FAT tables,
+    - starting addresses of the FAT tables,
+    - starting address of the data region,
+    - cluster size,
+    - identifier of the file system’s author.
   
   ```go
   // FileSystem is a struct representing the pseudo FAT file system. It is 31 bytes long.
@@ -87,36 +87,36 @@ Souborový systém je strukturován do několika klíčových částí:
   }
   ```
 
-  > Všech velikosti proměnných byly zvoleny tak, aby bylo ušetřeno co nejvíce místa na disku vzhledem k maximální velikosti souborového systému. Velikost clusteru byla zvolena na základě průměrné velikosti souboru v běžném uživatelském prostředí.
+  > All variable sizes were chosen to save as much disk space as possible given the maximum file system size. The cluster size was chosen based on the average file size in a typical user environment.
 <div style="page-break-after: always;"></div>
 
-- FAT tabulky:
-  - Jedná se o dvourozměrné pole int32 (standardně používá systém FAT 2 tabulky) s délkou odpovídající počtu clusterů.
-  - Používá se k mapování alokovaných a volných clusterů na virtuálním disku do datové oblasti.
-  - Speciální hodnoty označují nevyužité bloky (`FatFree int32 = -1`), konec souboru (`FatFileEnd int32 = -2`) a poškozené bloky (`FatBadCluster int32 = -3`).
+- FAT tables:
+  - A two-dimensional `int32` array (FAT typically uses 2 tables) with a length corresponding to the number of clusters.
+  - Used to map allocated and free clusters on the virtual disk to the data region.
+  - Special values denote unused blocks (`FatFree int32 = -1`), end of file (`FatFileEnd int32 = -2`), and bad blocks (`FatBadCluster int32 = -3`).
 
-- Datová oblast:
-  - Jedná se o byte pole délky alokovatelého prostoru na disku (počet clusterů * velikost clusteru).
-  - Obsahuje metadata samotných souborů a adresářů včetně jejich obsahu (jedná-li se o soubory).
-  - Každý soubor či adresář si drží v počátečním clusteru referenci sám na sebe (ve formě `DirectoryEntry` struktury).
-  - Následně:
-    - je-li soubor, další clustery obsahují data souboru;
-    - je-li adresář, další clustery obsahují reference na soubory a adresáře v něm obsažené.
-  - Do dat z datové oblasti je přistupováno pomocí FAT tabulek:
-    - Offset začátku jednotlivých záznamů v poli je vypočítán jako `(clusterIndex * ClusterSize)`.
+- Data region:
+  - A byte array of length equal to the allocatable space on the disk (number of clusters × cluster size).
+  - Contains metadata of files and directories themselves, including their contents (for files).
+  - Each file or directory keeps a self-reference in its starting cluster (as a `DirectoryEntry` structure).
+  - Then:
+    - if it’s a file, the following clusters contain the file’s data;
+    - if it’s a directory, the following clusters contain references to files and directories contained within it.
+  - Data in the data region is accessed via the FAT tables:
+    - The offset of each record’s beginning in the array is computed as `(clusterIndex * ClusterSize)`.
 
-### Vedlejší struktury
+### Secondary Structures
 
-Další důležité struktury:
+Other important structures:
 
-- Záznam (`DirectoryEntry`) souboru nebo adresáře:
-  - Jedná se o strukturu o velikosti 20 bytů, která obsahuje metadata souboru nebo adresáře.
-  - Struktura obsahuje následující informace:
-    - název souboru nebo adresáře,
-    - příznak, zda se jedná o soubor,
-    - velikost souboru,
-    - startovací cluster souboru,
-    - startovací cluster rodičovského adresáře.
+- `DirectoryEntry` record for a file or directory:
+  - A 20-byte structure containing metadata about the file or directory.
+  - The structure contains the following information:
+    - name of the file or directory,
+    - flag indicating whether it is a file,
+    - file size,
+    - starting cluster of the file,
+    - starting cluster of the parent directory.
   ```go
   // DirectoryEntry is a struct representing an item in a directory. It is 20 bytes long.
   type DirectoryEntry struct {
@@ -133,152 +133,153 @@ Další důležité struktury:
   }
   ```
 
-> Každý DirectoryEntry záznam zabírá 1 cluster. Bylo tak zvoleno na základě standardu FAT. Znamená to, že pokud by souborový systém obsahoval převážně adresáře nebo velmi malé soubory, docházelo by k neefektivnímu využití místa na disku. Omezení je ale pro účely této práce dostačující.
+> Each `DirectoryEntry` record occupies 1 cluster. This choice follows the FAT standard. It means that if the file system consists mostly of directories or very small files, disk space would be used inefficiently. However, this limitation is sufficient for the purposes of this work.
 
-> Kořenový adresář je reprezentován jako záznam s názvem `/` a startovacím clusterem 0. Jeho rodičovský cluster odkažuje na sebe samého. V programu jsou nastaveny omezení, aby kořenový adresář nemohl být smazán ani jinak modifikován.
+> The root directory is represented as a record named `/` with starting cluster 0. Its parent cluster points to itself. The program enforces constraints so that the root directory cannot be deleted or otherwise modified.
 
-### Princip fungování soubového systému
+### How the File System Works
 
-Souborový systém funguje na principu alokace souborů a adresářů v rámci pevně definovaných clusterů, které jsou propojeny pomocí FAT tabulky. Každý soubor nebo adresář je uložen v jednom nebo více clusterech, jejichž pořadí je udržováno právě v této tabulce.
+The file system allocates files and directories within fixed-size clusters that are linked via the FAT table. Each file or directory is stored in one or more clusters, and the FAT maintains the sequence.
 
-#### 1. Vytváření souboru/adresáře
+#### 1. Creating a file/directory
 
-Proces vytvoření souboru probíhá v několika krocích:
+Creating a file proceeds in several steps:
 
-- Vyhledání volného místa v nadřazeném adresáři.
-  - Systém zpracuje zadanou cestu a pokusí se získat nadřazený adresář pro cílový záznam (pokud je cesta validní).
-  - Systém načte adresářovou strukturu nadřazeného adresáře a zkontroluje, zda název záznamu v seznamu potomků již neexistuje.
-  - Pokud neexistuje, je přidán nový záznam do seznamu potomků (včetně aktualizace FAT tabulky).
-- Alokace prvního clusteru pro samotný soubor/adresář.
-  - Systém prohledá FAT tabulku a nalezne první volný cluster.
-  - Tento cluster je zapsán jako počáteční (`StartCluster`) v DirectoryEntry.
-- Uložení dat souboru.
-  - Pokud soubor zabírá více než jeden cluster, je každý další cluster propojen v FAT tabulce s předchozím.
-  - Poslední cluster v řetězci obsahuje značku `FatFileEnd`.
+- Finding free space in the parent directory.
+  - The system processes the given path and tries to obtain the parent directory for the target record (if the path is valid).
+  - It loads the directory structure of the parent and checks whether the target name already exists among the children.
+  - If it does not exist, a new record is added to the children (including updating the FAT table).
+- Allocating the first cluster for the file/directory itself.
+  - The system scans the FAT table to find the first free cluster.
+  - This cluster is stored as the starting cluster (`StartCluster`) in the `DirectoryEntry`.
+- Saving file data.
+  - If the file occupies more than one cluster, each subsequent cluster is linked in the FAT table to the previous one.
+  - The last cluster in the chain contains the `FatFileEnd` marker.
 
-#### 2. Načítání souboru/adresáře
+#### 2. Reading a file/directory
 
-Proces načítání souboru/adresáře probíhá následovně:
+Reading a file/directory proceeds as follows:
 
-- Vyhledání souboru/adresáře.
-  - Systém se pokusí najít záznam na základě poskytnuté cesty.
-  - Čtení obsahu přes FAT tabulku
-    - Počáteční cluster (`StartCluster`) se použije jako výchozí bod.
-    - Z prvního clusteru se načte `DirectoryEntry` představující soubor/adresář.
-    - Jakékoliv další clustery představují potomky adresáře nebo data souboru.
-    - Systém prochází FAT tabulku a načítá data ze všech přidělených clusterů, dokud nenarazí na `FatFileEnd`.<div style="page-break-after: always;"></div>
+- Locating the file/directory.
+  - The system attempts to find the record based on the provided path.
+  - Reading the contents through the FAT table:
+    - The starting cluster (`StartCluster`) is used as the entry point.
+    - From the first cluster, the `DirectoryEntry` representing the file/directory is loaded.
+    - Any subsequent clusters represent the directory’s children or the file’s data.
+    - The system traverses the FAT table and reads data from all allocated clusters until it encounters `FatFileEnd`.<div style="page-break-after: always;"></div>
 
-#### 3. Mazání souboru/adresáře
+#### 3. Deleting a file/directory
 
-Při mazání souboru je třeba provést následující kroky:
+When deleting a file, the following steps are required:
 
-- Vyhledání souboru/adresáře:
-  - Systém analyzuje cestu a nalezne odpovídající záznam `DirectoryEntry` v nadřazeném adresáři.
-  - Pokud se jedná o adresář, je nutné zkontrolovat, zda není prázdný (neobsahuje žádné soubory nebo podadresáře).
-- Odstranění záznamu z nadřazeného adresáře:
-  - `DirectoryEntry` odpovídající souboru nebo adresáři je odstraněn z nadřazeného adresáře (včetně aktualizace FAT tabulky - zkrácení řetězce clusterů o jeden cluster).
-  - Oblast záznamu z datové sekce je vynulována.
-- Uvolnění clusterů:
-  - Každý cluster, který soubor nebo adresář využívá, je označen jako `FatFree` ve FAT tabulce.
-  - Oblast záznamu z datové sekce, která podle FAT tabulky patří k souboru/adresáři, je vynulována.
+- Locating the file/directory:
+  - The system parses the path and finds the corresponding `DirectoryEntry` record in the parent directory.
+  - If it is a directory, it must be verified that it is empty (contains no files or subdirectories).
+- Removing the record from the parent directory:
+  - The `DirectoryEntry` corresponding to the file or directory is removed from the parent directory (including updating the FAT table—shortening the cluster chain by one cluster).
+  - The record’s area in the data section is zeroed out.
+- Releasing clusters:
+  - Each cluster used by the file or directory is marked as `FatFree` in the FAT table.
+  - The record’s area in the data section that belongs to the file/directory according to the FAT table is zeroed out.
 
-> Při mazání adresáře dochází k vytváření volných míst v datové oblasti a FAT tabulkách. Následné vkládání nových větších záznamů způsobuje fragmentaci souborového systému. S fragmentací se však v systémech FAT počítá a je běžným jevem. V reálném souborovém systému by bylo nutné implementovat mechanismus defragmentace, který by zajišťoval, že soubory jsou uloženy v paměti co nejefektivněji.
+> Deleting directories creates free holes in the data region and FAT tables. Inserting new, larger records later causes fragmentation of the file system. Fragmentation is expected and common in FAT systems. In a real file system, it would be necessary to implement a defragmentation mechanism to ensure that files are stored as efficiently as possible.
 
-#### 4. Přesun souboru/adresáře
+#### 4. Moving a file/directory
 
-Při přesunu souboru nebo adresáře dochází k následujícím krokům:
+When moving a file or directory, the following steps occur:
 
-- Vyhledání zdrojového záznamu:
-  - Systém nalezne odpovídající `DirectoryEntry` souboru nebo adresáře.
-- Zkontrolování existence cílového umístění:
-  - Systém se ujistí, že cílová cesta existuje a že již neobsahuje soubor/adresář se stejným jménem.
-- Vytvoření nového záznamu v cílovém adresáři:
-  - Do cílového adresáře se přidá nový DirectoryEntry, který odkazuje na stejná data jako původní záznam.
-- Odstranění starého záznamu:
-  - Původní DirectoryEntry je odstraněn ze zdrojového adresáře.
-  - FAT tabulka je aktualizována:
-    - Odebrání clusteru z nadřazeného adresáře.
-    - Přidání clusteru do cílového adresáře.
-    - Clusterové řetězce, které obsahovaly data souboru/adresáře, zůstávají nezměněny.
+- Finding the source record:
+  - The system finds the corresponding `DirectoryEntry` of the file or directory.
+- Checking the existence of the target location:
+  - The system ensures the target path exists and that it does not already contain a file/directory with the same name.
+- Creating a new record in the target directory:
+  - A new `DirectoryEntry` is added to the target directory, referencing the same data as the original record.
+- Removing the old record:
+  - The original `DirectoryEntry` is removed from the source directory.
+  - The FAT table is updated:
+    - Remove a cluster from the parent directory.
+    - Add a cluster to the target directory.
+    - The cluster chains that contain the file/directory data remain unchanged.
 
-#### 5. Kopírování souboru/adresáře
+#### 5. Copying a file/directory
 
-Používá principy [vytváření nového záznamu](#1-vytváření-souboruadresáře). Dochází pouze ke kopírování obsahu souboru/adresáře do nového umístění a změně počátečních clusterů (podle nalezeného volného místa).
+Uses the principles of [creating a new record](#1-creating-a-filedirectory). Only the contents of the file/directory are copied to the new location, and the starting clusters are changed (according to the free space found).
+<div style="page-break-after: always;"></div><p></p>
 
-## 4. Návod na zprovoznění
+## 4. Setup Guide
 
-### Požadavky
+### Requirements
 
-Pro sestavení a spuštění projektu je třeba mít nainstalováno následující:
+To build and run the project, you need:
 
-- Go 1.22 nebo novější
+- Go 1.22 or newer
 - make
-  - > Na Windows je možné použít například [make z chocolatey](https://community.chocolatey.org/packages/make), či jiné alternativy.
+  - > On Windows you can use, for example, [make from Chocolatey](https://community.chocolatey.org/packages/make), or other alternatives.
 
-### Sestavení projektu
+### Building the project
 
-Pro sestavení celého projektu byly vytvořeny soubory *Makefile* a *Makefile.win*, které obsahují instrukce pro sestavení projektu na Unixových a Windows OS. Pro sestavení projektu na Unixových OS stačí spustit z kořenové složky projektu příkaz:
+To build the whole project, *Makefile* and *Makefile.win* were created with instructions for Unix and Windows OS. To build on Unix-like OS, run from the project root:
 
 ```bash
 make
 ```
 
-a pro Windows OS stačí spustit příkaz:
+and on Windows, run:
 
 ```cmd
 make -f Makefile.win
 ```
 
-Skript sestaví spustitelný soubor ve složce *bin/*. Spustitelný soubor je pojmenován *myfs*, případně na Windows *myfs.exe*.
+The script builds an executable into the *bin/* folder. The executable is named *myfs*, or on Windows *myfs.exe*.
 
-### Spuštění programu
+### Running the program
 
-Program lze spustit s následujícím příkazem:
+Run the program with:
 
 ```bash
-./bin/myfs <cesta k virtuálnímu disku>
+./bin/myfs <path to virtual disk>
 ```
 
-> Soubory kopírované do virtuálního disku a naopak jsou vždy kopírovány relativně ke složce, ve které je spuštěn program.
+> Files copied into the virtual disk and vice versa are always copied relative to the folder where the program is launched.
 
-### Manuální spuštění pomocí Go
+### Running manually via Go
 
-Jako alternativu k sestavení projektu je možné spustit projekt přímo pomocí Go. Je potřeba ho spouštět ze složky *src/*. Program lze spustit pomocí následujícího příkazu:
+As an alternative to building, you can run the project directly with Go. It must be run from the *src/* folder. Start it with:
 
 ```bash
-go run main.go <cesta k virtuálnímu disku>
+go run main.go <path to virtual disk>
 ```
 <div style="page-break-after: always;"></div>
 
-## 5. Struktura projektu
+## 5. Project Structure
 
-Projekt je rozdělen následovně:
+The project is divided as follows:
 
-- *Kořenová složka* &mdash; Obsahuje soubory pro sestavení projektu, složku *src/* obsahující zdrojové kódy projektu, složku *bin/* pro výstupní soubory a složku *docs/* s dokumentací.
+- *Root folder* — Contains build files, the *src/* folder with the project’s source code, the *bin/* folder for build outputs, and the *docs/* folder with documentation.
 
-### Kořenová složka
+### Root folder
 
-<!-- strom: -->
+<!-- tree: -->
 <!-- .
 ├── ./Makefile
 ├── ./Makefile.win
 ├── ./bin/
 ├── ./docs/
-│   └── ./docs/doc.md
+│   └── ./docs/doc.md
 └── ./src/
     ├── ./src/arg_parser/arg_parser.go
     ├── ./src/cmd/
-    │   ├── ./src/cmd/command.go
-    │   ├── ./src/cmd/command_executor.go
-    │   ├── ./src/cmd/command_parser.go
-    │   └── ./src/cmd/command_validator.go
+    │   ├── ./src/cmd/command.go
+    │   ├── ./src/cmd/command_executor.go
+    │   ├── ./src/cmd/command_parser.go
+    │   └── ./src/cmd/command_validator.go
     ├── ./src/consts/
-    │   ├── ./src/consts/cmds.go
-    │   ├── ./src/consts/exit_codes.go
-    │   ├── ./src/consts/fat_flags.go
-    │   ├── ./src/consts/formats.go
-    │   ├── ./src/consts/limits.go
-    │   └── ./src/consts/msg.go
+    │   ├── ./src/consts/cmds.go
+    │   ├── ./src/consts/exit_codes.go
+    │   ├── ./src/consts/fat_flags.go
+    │   ├── ./src/consts/formats.go
+    │   ├── ./src/consts/limits.go
+    │   └── ./src/consts/msg.go
     ├── ./src/custom_errors/errors.go
     ├── ./src/go.mod
     ├── ./src/logging/logging.go
@@ -294,97 +295,97 @@ Projekt je rozdělen následovně:
         ├── ./src/utils/pretty_print.go
         └── ./src/utils/pseudo_fat_fs_operations.go -->
 
-- *Makefile* &mdash; Soubor pro sestavení projektu na Unix OS.
+- *Makefile* — Build file for Unix OS.
 
-- *Makefile.win* &mdash; Soubor pro sestavení projektu na Windows OS.
+- *Makefile.win* — Build file for Windows OS.
 
-- *docs/* &mdash; Složka obsahující dokumentaci.
-  - *docs/doc.md* a *docs/doc.pdf* &mdash; Tento dokument ve formátu Markdown a PDF.
-  - *docs/client_ref.html* &mdash; Odkaz na dokumentaci klientské části.
-  - *docs/server_ref.html* &mdash; Odkaz na dokumentaci serverové části.
+- *docs/* — Folder containing documentation.
+  - *docs/doc.md* and *docs/doc.pdf* — This document in Markdown and PDF format.
+  - *docs/client_ref.html* — Link to client-side documentation.
+  - *docs/server_ref.html* — Link to server-side documentation.
 
-- *src/* &mdash; Složka obsahující zdrojové kódy projektu.
-  - *src/arg_parser/arg_parser.go* &mdash; Modul pro zpracování argumentů příkazové řádky.
+- *src/* — Folder containing the project source code.
+  - *src/arg_parser/arg_parser.go* — Module for processing command-line arguments.
 
-  - *src/cmd/* &mdash; Složka obsahující moduly pro zpracování příkazů.
-    - *src/cmd/command.go* &mdash; Definice struktury příkazu.
-    - *src/cmd/command_parser.go* &mdash; Modul pro parsování příkazu.
-    - *src/cmd/command_validator.go* &mdash; Modul pro validaci příkazu.
-    - *src/cmd/command_executor.go* &mdash; Modul pro vykonání příkazu.
+  - *src/cmd/* — Folder containing modules for processing commands.
+    - *src/cmd/command.go* — Definition of the command structure.
+    - *src/cmd/command_parser.go* — Module for parsing commands.
+    - *src/cmd/command_validator.go* — Module for validating commands.
+    - *src/cmd/command_executor.go* — Module for executing commands.
 
-  - *src/consts/* &mdash; Složka obsahující definované konstanty používané v projektu.
-    - *src/consts/cmds.go* &mdash; Seznam podporovaných příkazů v souborovém systému.
-    - *src/consts/exit_codes.go* &mdash; Definice návratových kódů programu.
-    - *src/consts/fat_flags.go* &mdash; Konstanty určující speciální hodnoty v FAT tabulce (např. `FatFileEnd`, `FatFree`).
-    - *src/consts/formats.go* &mdash; Definice všech jednotek a podporovaných znaků/symbolů.
-    - *src/consts/limits.go* &mdash; Definované limity souborového systému (např. maximální velikost názvu souboru, ...).
-    - *src/consts/msg.go* &mdash; Obsahuje textové zprávy používané pro výstupy.
+  - *src/consts/* — Folder containing constants used in the project.
+    - *src/consts/cmds.go* — List of supported file system commands.
+    - *src/consts/exit_codes.go* — Program exit codes.
+    - *src/consts/fat_flags.go* — Constants defining special values in the FAT table (e.g., `FatFileEnd`, `FatFree`).
+    - *src/consts/formats.go* — Definitions of all units and supported characters/symbols.
+    - *src/consts/limits.go* — Defined file system limits (e.g., maximum filename length, ...).
+    - *src/consts/msg.go* — Text messages used for outputs.
 
-  - *src/custom_errors/errors.go* &mdash; Definuje vlastní chybové typy a konstanty chybových hlášení používané v projektu.
+  - *src/custom_errors/errors.go* — Defines custom error types and error message constants used in the project.
 
-  - *src/logging/logging.go* &mdash; Modul pro správu logování, umožňuje zapisovat zprávy různých úrovní (INFO, WARNING, ERROR, ...).
+  - *src/logging/logging.go* — Logging module, allows writing messages of different levels (INFO, WARNING, ERROR, ...).
 
-  - *src/pseudo_fat/structures.go* &mdash; Definice základních datových struktur souborového systému, včetně `FileSystem` a `DirectoryEntry`.
+  - *src/pseudo_fat/structures.go* — Definitions of the core data structures of the file system, including `FileSystem` and `DirectoryEntry`.
 
-  - *src/utils/* &mdash; Složka obsahující pomocné utility pro práci se souborovým systémem.
-    - *src/utils/data_transform.go* &mdash; Nástroje pro konverzi dat mezi různými formáty, například serializace a deserializace binárních struktur.
-    - *src/utils/loader.go* &mdash; Modul pro načítání souborového systému do binárního souboru.
-    - *src/utils/path.go* &mdash; Nástroje pro zpracování cest k souborům a adresářům.
-    - *src/utils/pretty_print.go* &mdash; Modul pro formátování výstupu a přehledné zobrazování informací pro určité struktury.
-    - *src/utils/pseudo_fat_fs_operations.go* &mdash; Implementace algorithmů pro práci se souborovým systémem.
-      - **Zde se nachází implementace všech podporovaných příkazů, jako je vytváření, mazání, kopírování, přesunování souborů a adresářů, práce s adresáři, načítání a ukládání dat, ...**
+  - *src/utils/* — Folder with helper utilities for working with the file system.
+    - *src/utils/data_transform.go* — Tools for converting data between formats, e.g., serialization and deserialization of binary structures.
+    - *src/utils/loader.go* — Module for loading the file system into a binary file.
+    - *src/utils/path.go* — Tools for processing file and directory paths.
+    - *src/utils/pretty_print.go* — Module for formatting output and clearly displaying information for certain structures.
+    - *src/utils/pseudo_fat_fs_operations.go* — Implementation of algorithms for working with the file system.
+      - **This is where all supported commands are implemented, such as creating, deleting, copying, moving files and directories, working with directories, loading and saving data, ...**
 
-  - *src/main.go* &mdash; Hlavní soubor projektu, který inicializuje souborový systém, načítá příkazy a zajišťuje jejich vykonání.
+  - *src/main.go* — The project’s main file, which initializes the file system, reads commands, and ensures their execution.
 
-  - *src/test.cmds*, *src/testh.cmds*, *src/testr.cmds* &mdash; Soubory obsahující testovací sady příkazů pro ověření správné funkčnosti implementace souborového systému (pomocí příkazu `load`).
+  - *src/test.cmds*, *src/testh.cmds*, *src/testr.cmds* — Files containing test command sets to verify the correct behavior of the file system implementation (via the `load` command).
 
-## 6. Popis implementace
+## 6. Implementation Details
 
-Do popisu implementace budou převážně zahrnuty jen ty nejdůležitější části kódu potřebné pro pochopení principu fungování aplikace. Projekt je strukturován tak, aby umožňoval efektivní zpracování příkazů a manipulaci se souborovým systémem.
+The implementation description primarily covers the most important parts of the code needed to understand how the application works. The project is structured to enable efficient command processing and manipulation of the file system.
 
-### Hlavní komponenty a jejich role
+### Main components and their roles
 
-Projekt je rozdělen do několika klíčových modulů, které spolu úzce spolupracují:
+The project is divided into several key modules that closely cooperate:
 
-- *main.go* &mdash; hlavní vstupní bod aplikace, inicializuje souborový systém, spouští vlákna pro zpracování příkazů a spravuje ukončení programu.
-- *cmd/* &mdash; obsahuje logiku pro parsování, validaci a vykonávání příkazů.
-- *pseudo_fat/* &mdash; definice pseudo FAT souborového systému, včetně základních datových struktur.
-- *utils/* &mdash; pomocné funkce pro práci s cestami, konverze dat a **správa souborového systému**.
-- logging/ &mdash; zajišťuje logování událostí v systému.
+- *main.go* — the application’s main entry point; initializes the file system, starts goroutines for command processing, and manages program termination.
+- *cmd/* — contains logic for parsing, validating, and executing commands.
+- *pseudo_fat/* — definitions of the pseudo-FAT file system, including core data structures.
+- *utils/* — helper functions for working with paths, data conversions, and **file system management**.
+- *logging/* — handles system event logging.
 
-### Průběh vykonání příkazu
+### Command execution flow
 
-1. Inicializace aplikace (`main.go`)
-   - Program začíná zpracováním argumentů příkazové řádky.
+1. Application initialization (`main.go`)
+   - The program starts by processing command-line arguments.
      - `arg_parser.GetFilenameFromArgs()`
-   - Ověří, zda existuje soubor reprezentující souborový systém. Přípandně vytvoří nový.
+   - Checks whether the file representing the file system exists; if necessary, creates a new one.
      - `getFileFromPath()`.
-   - Poté se pokusí načíst souborový systém do paměti (případně neinicializovaný souborový systém, pokud v souboru nebyly žádné data).
+   - Then it attempts to load the file system into memory (or an uninitialized file system if the file contained no data).
      - `utils.GetFileSystem()`.
-   - Vytvoří se gorutiny pro čtení příkazů (`acceptCmds()`) a jejich vykonávání (`interpretCmds()`).
-   - Program čeká ve funkci (`handleProgramTermination()`) dokud není ukončen uživatelem (příkaz `exit` nebo poslání signálu `SIGINT`).
+   - Goroutines are created for reading commands (`acceptCmds()`) and executing them (`interpretCmds()`).
+   - The program waits in (`handleProgramTermination()`) until terminated by the user (`exit` command or sending a `SIGINT` signal).
 
-2. Čtení příkazů (`acceptCmds()`)
-   - Gorutina `acceptCmds()` nepřetržitě čte vstup uživatele (`bufio.Scanner`).
-   - Každý vstup je parsován (`cmd.ParseCommand()`).
-     - Pokud je příkaz validní (`cmd.ValidateCommand()`), je odeslán do kanálu `cmdBufferChan`.
+2. Reading commands (`acceptCmds()`)
+   - The `acceptCmds()` goroutine continuously reads user input (`bufio.Scanner`).
+   - Each input is parsed (`cmd.ParseCommand()`).
+     - If a command is valid (`cmd.ValidateCommand()`), it is sent to the `cmdBufferChan`.
 
-3. Vykonání příkazu (`interpretCmds()`)
-   - Gorutina `interpretCmds()` čte příkazy z `cmdBufferChan`.
-   - Každý příkaz je předán k vykonání (`cmd.ExecuteCommand()`).
-     - `cmd.ExecuteCommand()` zpracuje příkaz, vykoná jednodušší operaci (změna aktuálního adresáře, výpis adresáře, ...) nebo zavolá příslušnou funkci z *utils/pseudo_fat_fs_operations.go* pro provedení operace nad souborovým systémem.
-     - V případě chyby se vypíše odpovídající chybová hláška (*custom_errors*).
-     - Pokud byl příkaz úspěšný, případné změny se uloží do souborového systému (`utils.WriteFileSystem`).
+3. Executing a command (`interpretCmds()`)
+   - The `interpretCmds()` goroutine reads commands from `cmdBufferChan`.
+   - Each command is passed for execution (`cmd.ExecuteCommand()`).
+     - `cmd.ExecuteCommand()` processes the command, performs simpler operations (changing the current directory, listing a directory, ...) or calls the corresponding function from *utils/pseudo_fat_fs_operations.go* to perform the operation on the file system.
+     - On error, an appropriate error message is printed (*custom_errors*).
+     - If the command succeeded, any changes are written to the file system (`utils.WriteFileSystem`).
 
-Implementace samotných operací nad souborovým systémem se nachází v souboru *utils/pseudo_fat_fs_operations.go*. Vetšina funkcí je nazvána výstižně podle příkazu, který implementuje (např. `Mkdir()`, `Rmdir()`, `CopyInsideFS()`, ...).
-> V produkčním světě by bylo potřeba funkce z tohoto souboru více dekomponovat, ale pro rychlou navigaci čtenáře skrze operace, které bylo nutné vykonat nad souborovým systémem, byly fuknce ponechány v méně modulární podobě (aby čtenář nemusel přeskakovat mezi soubory/řádky do různých funkcí).
+The implementation of the actual file system operations is located in *utils/pseudo_fat_fs_operations.go*. Most functions are aptly named after the command they implement (e.g., `Mkdir()`, `Rmdir()`, `CopyInsideFS()`, ...).
+> In production, functions in this file would need to be decomposed further, but to help the reader quickly navigate the operations required in the file system, the functions were left in a less modular form (so the reader does not have to jump between files/lines to different functions).
 
-### Chyba při kopírování souborových dat do datového regionu
+### Bug when copying file data to the data region
 
-Při kontrole práce zadavatelem byla nalezena chyba zápisu souboru do souborového systému. Došlo k chybě při kopírování dat do paměti. Konkrétně při použití funkce jazyka `copy()` pro přenos dat ze zdrojového pole (`fileDataRef`) do datového regionu (`dataRef`).
-&nbsp;&nbsp;&nbsp;&nbsp;Problém spočíval v tom, že při určování rozsahu dat ke kopírování nebyla nastavena limitní hodnota. To vedlo k situaci, kdy Go kopírovalo více dat, než bylo požadováno a přepisovalo clustery, které nepatřily k souboru. Tím docházelo k poškození souborového systému.
+During review by the assigner, a bug was found when writing a file to the file system. There was an error while copying data into memory—specifically when using Go’s `copy()` to transfer data from the source array (`fileDataRef`) to the data region (`dataRef`).
+&nbsp;&nbsp;&nbsp;&nbsp;The issue was that the copy range did not have a limiting end value set. This led Go to copy more data than intended, overwriting clusters that did not belong to the file. This corrupted the file system.
 
-Kód před opravou:
+Code before the fix:
 
 ```go
 // write the file data to the filesystem
@@ -396,8 +397,9 @@ for i, clusterIndex := range freeClusterIndicesData {
   prevIndex = clusterIndex
 }
 ```
+<div style="page-break-after: always;"></div><p></p>
 
-Kód po opravě:
+Code after the fix:
 
 ```go
 // write the file data to the filesystem
@@ -419,32 +421,32 @@ for i, clusterIndex := range freeClusterIndicesData {
 }
 ```
 
-Tato chyba je analogická k problému známému z jazyka C, kdy se používá strcpy() namísto bezpečnější varianty strncpy(), což může vést k přetečení bufferu.
+This bug is analogous to the well-known issue in C when using `strcpy()` instead of the safer `strncpy()`, which can lead to buffer overflows.
 
-## 7. Testování
+## 7. Testing
 
-Testování projektu bylo provedeno manuálně uživatelským testováním. Žádné automatické testy nebyly implementovány. Testování bylo zaměřeno na ověření správné funkčnosti základních operací souborového systému, jako je vytváření, mazání, kopírování a přesouvání souborů a adresářů. Dále byla testována správná práce s cestami, validace vstupu a detekce chyb.
+Project testing was performed manually through user-level testing. No automated tests were implemented. Testing focused on verifying correct behavior of basic file system operations such as creating, deleting, copying, and moving files and directories. Correct path handling, input validation, and error detection were also tested.
 
-## 8. Závěr
+## 8. Conclusion
 
-Tento projekt implementuje zjednodušený souborový systém založený na principu FAT (File Allocation Table), přičemž využívá jazyk Go pro efektivní správu paměti a manipulaci s binárními daty. Cílem bylo vytvořit funkční a srozumitelnou simulaci souborového systému, která umožňuje uživateli provádět základní operace nad virtuálním diskem, jako je vytváření, mazání, přesouvání a kopírování souborů a adresářů.
+This project implements a simplified file system based on the FAT (File Allocation Table) principles, using Go for efficient memory management and manipulation of binary data. The goal was to create a functional and understandable simulation of a file system that allows the user to perform basic operations on a virtual disk, such as creating, deleting, moving, and copying files and directories.
 
-Při návrhu a implementaci bylo třeba řešit několik klíčových výzev, mezi které patřilo:
+Several key challenges had to be addressed in the design and implementation, including:
 
-- Správa clusterů a FAT tabulek, včetně správného propojení řetězců clusterů pro soubory a adresáře.
-- Efektivní práce s binárními daty, včetně serializace a deserializace struktur souborového systému.
-- Zajištění integrity souborového systému a detekce chyb, například při manipulaci se soubory a jejich datovými bloky.
-- Validace a zpracování cest, což zahrnovalo podporu jak relativních, tak absolutních cest.
+- Management of clusters and FAT tables, including proper linking of cluster chains for files and directories.
+- Efficient work with binary data, including serialization and deserialization of file system structures.
+- Ensuring file system integrity and error detection, for example when manipulating files and their data blocks.
+- Validation and processing of paths, including support for both relative and absolute paths.
 
-Projekt je navržen modulárně, což umožňuje snadné rozšíření a přizpůsobení. Struktura kódu je přehledně rozdělena mezi moduly pro práci s příkazy, souborovým systémem, cestami a pomocnými funkcemi, což zajišťuje dobrou čitelnost a udržovatelnost.
+The project is designed modularly, enabling easy extension and customization. The code structure is clearly divided among modules for command handling, the file system, paths, and helper functions, ensuring good readability and maintainability.
 
-Shrnutí dosažených cílů:
+Summary of achieved goals:
 
-- Základní operace souborového systému: Implementovány běžné operace jako mkdir, rm, mv, cp, ls, pwd, info a další.
-- Práce s virtuálním diskem: Umožňuje formátování souborového systému, správu souborů a adresářů.
-- Ošetření běžných chyb: Validace vstupu, kontrola konzistence souborového systému (check), detekce a simulace chyb (bug).
-- Testování a ladění: Byly odhaleny a opraveny chyby, například problém s přepisováním paměti při kopírování souborů.
-- Přehledná a udržovatelná architektura: Modulární rozdělení zdrojového kódu, dobře definované rozhraní mezi komponentami.
+- Basic file system operations: Implemented common operations such as `mkdir`, `rm`, `mv`, `cp`, `ls`, `pwd`, `info`, and others.
+- Work with a virtual disk: Supports formatting the file system and managing files and directories.
+- Handling common errors: Input validation, file system consistency checks (`check`), error detection and simulation (`bug`).
+- Testing and debugging: Errors were discovered and fixed, for example the memory overwrite issue when copying files.
+- Clear and maintainable architecture: Modular source code layout, well-defined interfaces between components.
 
-Projekt je připraven na další možná rozšíření jako je implementace defragmentace, implementace dalších typů souborů jako jsou například symbolické odkazy, a další.
-&nbsp;&nbsp;&nbsp;&nbsp;Projekt splnil svůj hlavní účel – implementovat funkční souborový systém a umožnit jeho efektivní správu. Přestože se jedná pouze o simulaci souborového systému, při jeho návrhu a implementaci bylo nutné řešit řadu reálných problémů, které jsou běžné v oblasti správy souborů a dat. Tento projekt tak nejen naplnil požadavky zadané semestrální práce, ale také poskytl cenné zkušenosti s návrhem a implementací nízkoúrovňového souborového systému.
+The project is ready for further extensions such as implementing defragmentation, adding new file types like symbolic links, and more.
+&nbsp;&nbsp;&nbsp;&nbsp;The project fulfilled its main purpose—implementing a functional file system and enabling its effective management. Although it is only a simulation, its design and implementation required solving many real-world problems common in the field of file and data management. This project provided valuable experience with the design and implementation of a low-level file system.
