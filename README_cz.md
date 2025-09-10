@@ -1,6 +1,7 @@
 # pseudoFAT — Zjednodušený souborový systém v Go
 
 > Autor: Milan Vlachovský 
+> 
 > Univerzitní projekt — pro studijní účely
 
 Studijní, souborový systém, který simuluje klíčové principy FAT (File Allocation Table) nad jediným binárním souborem sloužícím jako virtuální disk. Umožňuje vytvářet adresáře, kopírovat/přesouvat soubory, zkoumat řetězce clusterů a ověřovat konzistenci.
