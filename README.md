@@ -1,6 +1,7 @@
 # pseudoFAT — Simplified File System in Go
 
-> Author: Milan Vlachovský 
+> Author: Milan Vlachovský
+> 
 > University project — educational use
 
 A toy, study-oriented file system that simulates key ideas of FAT (File Allocation Table) on top of a single binary file acting as a virtual disk. It lets you create directories, copy/move files, inspect cluster chains, and verify consistency.
