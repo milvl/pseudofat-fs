@@ -1,0 +1,14 @@
+docs/** linguist-documentation
+*.md linguist-documentation
+*.html linguist-documentation
+
+bin/** linguist-generated
+*.exe linguist-generated
+*.fs linguist-generated
+*.pdf linguist-generated
+*.log linguist-generated
+
+Makefile.win linguist-language=Makefile
+
+# Command script samples treated as documentation
+src/*.cmds linguist-documentation
